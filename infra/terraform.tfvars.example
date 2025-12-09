@@ -1,0 +1,20 @@
+aws_region      = "us-east-1"
+environment     = "development"
+project_name    = "vs-platform"
+s3_bucket_name  = "vs-platform-videos-dev"
+
+db_name     = "vs_platform"
+db_username = "postgres"
+db_password = "change-me-in-production"
+
+db_instance_class = "db.t3.micro"
+redis_node_type   = "cache.t3.micro"
+
+# Update these with your actual VPC subnet IDs
+subnet_ids = [
+  "subnet-xxxxxxxx",
+  "subnet-yyyyyyyy"
+]
+
+allowed_cidr_blocks = ["10.0.0.0/16"]
+

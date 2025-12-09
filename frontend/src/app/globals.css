@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Video.js player styling */
+.video-player-container {
+  position: relative;
+  width: 100%;
+  background-color: #000;
+}
+
+/* Ensure Video.js player is visible and properly sized */
+.video-player-container .video-js {
+  width: 100% !important;
+  max-width: 100%;
+  height: auto !important;
+}
+
+/* Video.js with aspectRatio uses padding-top for aspect ratio */
+.video-player-container .video-js {
+  padding-top: 56.25% !important; /* 16:9 aspect ratio */
+}
+
+.video-player-container .video-js .vjs-tech {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+/* Ensure video element is visible */
+.video-player-container .video-js video {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Quality button styling - make text visible and aligned */
+.video-js .vjs-quality-button {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  order: 10; /* Place before fullscreen button */
+  width: auto !important;
+  height: 3em !important; /* Match Video.js control bar button height */
+  line-height: 3em !important; /* Match Video.js control bar line height */
+  vertical-align: top !important;
+}
+
+.video-js .vjs-quality-button button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 4em !important;
+  height: 3em !important; /* Match Video.js control bar button height */
+  padding: 0 0.8em !important; /* Match Video.js button padding */
+  font-size: 1em !important; /* Match Video.js button font size */
+  line-height: 3em !important; /* Match Video.js control bar line height */
+  color: #fff !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  font-family: Arial, Helvetica, sans-serif !important; /* Match Video.js font */
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+}
+
+.video-js .vjs-quality-button button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.video-js .vjs-quality-button button:focus {
+  outline: 1px solid #fff !important;
+  outline-offset: -1px !important;
+}
+
+/* Hide default icon */
+.video-js .vjs-quality-button button .vjs-icon-placeholder,
+.video-js .vjs-quality-button button .vjs-icon {
+  display: none !important;
+}
+
+/* Style the quality text - match Video.js button text styling */
+.video-js .vjs-quality-button .vjs-quality-text {
+  display: inline-block !important;
+  visibility: visible !important;
+  font-size: 1em !important;
+  line-height: 3em !important; /* Match control bar line height */
+  padding: 0 !important;
+  margin: 0 !important;
+  color: #fff !important;
+  font-family: Arial, Helvetica, sans-serif !important; /* Match Video.js font */
+  vertical-align: middle !important;
+  text-align: center !important;
+}
+
+/* Make control text visible for accessibility but keep it hidden visually */
+.video-js .vjs-quality-button .vjs-control-text {
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  white-space: nowrap !important;
+  width: 1px !important;
+}
+
+/* Quality menu item selection styling */
+.video-js .vjs-quality-button .vjs-menu .vjs-menu-content {
+  background: #fff !important;
+}
+
+.video-js .vjs-quality-button .vjs-menu .vjs-menu-item {
+  color: #000 !important;
+  padding: 8px 12px !important;
+}
+
+.video-js .vjs-quality-button .vjs-menu .vjs-menu-item:hover {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Only show checkmark for selected item */
+.video-js .vjs-quality-button .vjs-menu .vjs-menu-item.vjs-selected::before {
+  content: "✓" !important;
+  display: inline-block !important;
+  margin-right: 8px !important;
+  color: #2b6cb0 !important;
+  font-weight: bold !important;
+}
+
+/* Hide checkmark for non-selected items */
+.video-js .vjs-quality-button .vjs-menu .vjs-menu-item:not(.vjs-selected)::before {
+  content: "" !important;
+  display: inline-block !important;
+  width: 16px !important;
+  margin-right: 8px !important;
+}
+

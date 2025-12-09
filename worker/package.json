@@ -1,0 +1,32 @@
+{
+  "name": "worker",
+  "version": "1.0.0",
+  "description": "Background job workers for video transcoding",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.946.0",
+    "@prisma/adapter-pg": "^7.1.0",
+    "@prisma/client": "^7.1.0",
+    "@vs-platform/types": "workspace:*",
+    "bullmq": "^5.0.0",
+    "dotenv": "^16.3.1",
+    "envsafe": "^2.0.3",
+    "ioredis": "^5.3.2",
+    "pg": "^8.11.3",
+    "prisma": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.25",
+    "eslint": "^8.50.0",
+    "tsx": "^4.6.0",
+    "typescript": "^5.2.0"
+  }
+}

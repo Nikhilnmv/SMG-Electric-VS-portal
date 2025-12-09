@@ -1,0 +1,49 @@
+# Production Environment Variables
+# Copy this file to terraform.tfvars and customize as needed
+# DO NOT commit terraform.tfvars to version control
+
+aws_region = "us-east-1"
+project_name = "vs-platform"
+
+# VPC Configuration
+vpc_cidr = "10.0.0.0/16"
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24", "10.0.30.0/24"]
+availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+
+# Networking (full configuration for prod)
+create_internet_gateway = true
+create_nat_gateway = true  # Enabled for high availability
+
+# S3 Configuration
+enable_s3_versioning = true  # Enabled for data protection
+s3_encryption_algorithm = "AES256"  # Consider "aws:kms" for production
+
+# CDN Configuration
+enable_cdn = true  # Enabled for production
+enable_ipv6 = true
+cdn_min_ttl = 0
+cdn_default_ttl = 3600
+cdn_max_ttl = 86400
+cdn_geo_restriction_type = "none"  # Set to "whitelist" or "blacklist" if needed
+cdn_geo_restriction_locations = []  # Add country codes if geo-restriction is enabled
+
+# Worker Configuration
+worker_service_principal = "ecs-tasks.amazonaws.com"
+
+# Container Orchestration
+orchestration_type = "eks"  # EKS for production
+enable_container_insights = true  # Enabled for monitoring
+kubernetes_version = "1.28"
+eks_endpoint_private_access = true
+eks_endpoint_public_access = false  # Disabled for security
+
+# Common Tags
+common_tags = {
+  Project     = "VS Platform"
+  Environment = "prod"
+  ManagedBy   = "Terraform"
+  Team        = "Platform"
+  CostCenter  = "Engineering"
+}
+
