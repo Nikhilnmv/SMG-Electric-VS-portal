@@ -2,7 +2,7 @@
 
 import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
-import { Users, RefreshCw, AlertCircle, Loader2, Shield, UserMinus, UserPlus, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, AlertCircle, Loader2, Shield, UserMinus, UserPlus, CheckCircle2, XCircle, Eye, Trash2 } from 'lucide-react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { adminApi, AdminUser } from '@/lib/api';
@@ -14,17 +14,20 @@ export default function AdminUsersPage() {
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processingUser, setProcessingUser] = useState<string | null>(null);
   const [processingCategory, setProcessingCategory] = useState<string | null>(null);
+  const [deletingUser, setDeletingUser] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createdUserCredentials, setCreatedUserCredentials] = useState<{
+    userId: string;
     username: string;
     password: string;
     email: string;
   } | null>(null);
+  const [viewingCredentials, setViewingCredentials] = useState<AdminUser | null>(null);
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
 
   const categoryOptions = [
     { value: 'DEALER', label: 'Dealer' },
@@ -35,13 +38,9 @@ export default function AdminUsersPage() {
     { value: 'VENDOR', label: 'Vendor' },
   ];
 
-  const fetchUsers = async (showRefreshing = false) => {
+  const fetchUsers = async () => {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
       setNotification(null);
 
@@ -54,7 +53,6 @@ export default function AdminUsersPage() {
       setNotification({ type: 'error', message: errorMessage });
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -135,6 +133,30 @@ export default function AdminUsersPage() {
     });
   };
 
+  const handleViewCredentials = (user: AdminUser) => {
+    setViewingCredentials(user);
+  };
+
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!confirm(`Are you sure you want to delete user ${user.email}? This action cannot be undone and will delete all associated data.`)) {
+      return;
+    }
+
+    try {
+      setDeletingUser(user.id);
+      await adminApi.deleteUser(user.id);
+      await fetchUsers();
+      showNotification('success', `User ${user.email} deleted successfully.`);
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      const errorMessage = err?.message || 'Failed to delete user. Please try again.';
+      showNotification('error', errorMessage);
+    } finally {
+      setDeletingUser(null);
+      setUserToDelete(null);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="space-y-8">
@@ -147,23 +169,13 @@ export default function AdminUsersPage() {
             </div>
             <p className="text-gray-600">Manage users and their roles</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#0B214A] rounded-lg hover:bg-[#0B214A]/90 transition-colors"
-            >
-              <UserPlus className="h-4 w-4" />
-              Create User
-            </button>
-            <button
-              onClick={() => fetchUsers(true)}
-              disabled={refreshing || loading}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#0B214A] rounded-lg hover:bg-[#0B214A]/90 transition-colors"
+          >
+            <UserPlus className="h-4 w-4" />
+            Create User
+          </button>
         </div>
 
         {/* Notification Banner */}
@@ -226,13 +238,6 @@ export default function AdminUsersPage() {
                   </div>
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
                   <p className="text-gray-500 mb-4">There are no users registered on the platform yet.</p>
-                  <button
-                    onClick={() => fetchUsers(true)}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#0B214A] bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -296,35 +301,65 @@ export default function AdminUsersPage() {
                               <div className="text-sm text-gray-500">{formatDate(user.createdAt)}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                              {isCurrentUser ? (
-                                <span className="text-gray-400 text-sm">Cannot change own role</span>
-                              ) : isAdmin ? (
+                              <div className="flex items-center justify-end gap-2">
+                                {/* View Credentials Button */}
                                 <button
-                                  onClick={() => handleRoleChange(user.id, 'USER')}
-                                  disabled={processingUser === user.id}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => handleViewCredentials(user)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-[#0B214A] border border-[#0B214A] rounded-lg hover:bg-[#0B214A] hover:text-white transition-colors"
+                                  title="View Credentials"
                                 >
-                                  {processingUser === user.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <UserMinus className="h-4 w-4" />
-                                  )}
-                                  Revoke Admin
+                                  <Eye className="h-4 w-4" />
+                                  View
                                 </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleRoleChange(user.id, 'ADMIN')}
-                                  disabled={processingUser === user.id}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {processingUser === user.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <UserPlus className="h-4 w-4" />
-                                  )}
-                                  Make Admin
-                                </button>
-                              )}
+                                
+                                {/* Role Change Buttons */}
+                                {isCurrentUser ? (
+                                  <span className="text-gray-400 text-sm">Cannot change own role</span>
+                                ) : isAdmin ? (
+                                  <button
+                                    onClick={() => handleRoleChange(user.id, 'USER')}
+                                    disabled={processingUser === user.id}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {processingUser === user.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <UserMinus className="h-4 w-4" />
+                                    )}
+                                    Revoke Admin
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleRoleChange(user.id, 'ADMIN')}
+                                    disabled={processingUser === user.id}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    {processingUser === user.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <UserPlus className="h-4 w-4" />
+                                    )}
+                                    Make Admin
+                                  </button>
+                                )}
+                                
+                                {/* Delete User Button */}
+                                {!isCurrentUser && (
+                                  <button
+                                    onClick={() => handleDeleteUser(user)}
+                                    disabled={deletingUser === user.id}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Delete User"
+                                  >
+                                    {deletingUser === user.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-4 w-4" />
+                                    )}
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -348,6 +383,7 @@ export default function AdminUsersPage() {
               setShowCreateModal(false);
               if (result.password) {
                 setCreatedUserCredentials({
+                  userId: result.user.id,
                   username: result.user.username || '',
                   password: result.password,
                   email: result.user.email,
@@ -369,11 +405,25 @@ export default function AdminUsersPage() {
             onClose={() => setCreatedUserCredentials(null)}
             onSendEmail={async () => {
               try {
-                await adminApi.createUser({
-                  email: createdUserCredentials.email,
-                  sendCredentialsEmail: true,
-                });
-                showNotification('success', 'Credentials email sent successfully!');
+                await adminApi.sendUserCredentialsEmail(createdUserCredentials.userId);
+                showNotification('success', 'Credentials email sent successfully! A new temporary password has been generated and sent to the user.');
+              } catch (err: any) {
+                showNotification('error', err.message || 'Failed to send email');
+              }
+            }}
+          />
+        )}
+
+        {/* View Credentials Modal */}
+        {viewingCredentials && (
+          <ViewCredentialsModal
+            user={viewingCredentials}
+            onClose={() => setViewingCredentials(null)}
+            onSendEmail={async () => {
+              try {
+                await adminApi.sendUserCredentialsEmail(viewingCredentials.id);
+                showNotification('success', 'Credentials email sent successfully! A new temporary password has been generated and sent to the user.');
+                setViewingCredentials(null);
               } catch (err: any) {
                 showNotification('error', err.message || 'Failed to send email');
               }
@@ -640,7 +690,7 @@ function CredentialsDisplayModal({
   onClose,
   onSendEmail,
 }: {
-  credentials: { username: string; password: string; email: string };
+  credentials: { userId: string; username: string; password: string; email: string };
   onClose: () => void;
   onSendEmail: () => void;
 }) {
@@ -723,6 +773,142 @@ function CredentialsDisplayModal({
               className="px-4 py-2 text-sm font-medium text-white bg-[#0B214A] rounded-lg hover:bg-[#0B214A]/90 transition-colors"
             >
               Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// View Credentials Modal Component
+function ViewCredentialsModal({
+  user,
+  onClose,
+  onSendEmail,
+}: {
+  user: AdminUser;
+  onClose: () => void;
+  onSendEmail: () => void;
+}) {
+  const [initialPassword, setInitialPassword] = useState<string | null>(null);
+  const [loadingPassword, setLoadingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    // Fetch initial password when modal opens
+    const fetchInitialPassword = async () => {
+      setLoadingPassword(true);
+      setPasswordError(null);
+      try {
+        const data = await adminApi.getUserInitialPassword(user.id);
+        setInitialPassword(data.initialPassword);
+      } catch (err: any) {
+        console.error('Error fetching initial password:', err);
+        setPasswordError(err.message || 'Failed to load initial password');
+      } finally {
+        setLoadingPassword(false);
+      }
+    };
+
+    fetchInitialPassword();
+  }, [user.id]);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">User Credentials</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <XCircle className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800 font-medium mb-2">ℹ️ User Information</p>
+            <p className="text-xs text-blue-700">Initial credentials are shown below. You can send a new temporary password via email.</p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="text"
+                value={user.email}
+                readOnly
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+              <input
+                type="text"
+                value={user.username || 'Not set'}
+                readOnly
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Initial Password</label>
+              {loadingPassword ? (
+                <div className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-500 flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading...
+                </div>
+              ) : passwordError ? (
+                <div className="w-full px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                  {passwordError}
+                </div>
+              ) : initialPassword ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={initialPassword}
+                    readOnly
+                    className="flex-1 px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm"
+                  />
+                  <button
+                    onClick={() => copyToClipboard(initialPassword)}
+                    className="px-3 py-2 text-sm text-[#0B214A] border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              ) : (
+                <div className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-500">
+                  Not available
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200 flex items-center justify-end gap-3">
+            <button
+              onClick={onSendEmail}
+              className="px-4 py-2 text-sm font-medium text-[#0B214A] border border-[#0B214A] rounded-lg hover:bg-[#0B214A] hover:text-white transition-colors"
+            >
+              Send New Password via Email
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#0B214A] rounded-lg hover:bg-[#0B214A]/90 transition-colors"
+            >
+              Close
             </button>
           </div>
         </div>

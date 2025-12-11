@@ -6,6 +6,10 @@ import { updateVideoStatus } from '../services/database';
 export async function transcodingProcessor(job: Job<TranscodingJob>) {
   const { videoId, s3Key } = job.data;
 
+  if (!s3Key) {
+    throw new Error(`s3Key is required for video ${videoId}`);
+  }
+
   console.log(`Starting transcoding for video ${videoId}`);
 
   try {

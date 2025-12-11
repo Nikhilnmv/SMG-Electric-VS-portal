@@ -1,0 +1,9 @@
+# ClickHouse Cloud Configuration
+# Add these lines to your backend/.env file
+
+CLICKHOUSE_PROTOCOL=https
+CLICKHOUSE_HOST=jm3gqbrx6i.ap-south-1.aws.clickhouse.cloud
+CLICKHOUSE_PORT=8443
+CLICKHOUSE_DB=default
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=zcO9FJ.OLmP_H

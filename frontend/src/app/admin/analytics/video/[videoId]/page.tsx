@@ -4,7 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { analyticsApi } from '@/lib/api';
-import { ArrowLeft, Clock, Play, TrendingUp, Target, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Clock, Play, TrendingUp, Target, AlertCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,16 +34,11 @@ export default function VideoAnalyticsPage({ params }: { params: { videoId: stri
 
   const [analytics, setAnalytics] = useState<VideoAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAnalytics = async (showRefreshing = false) => {
+  const fetchAnalytics = async () => {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       const data = await analyticsApi.getVideoAnalytics(params.videoId);
@@ -62,7 +57,6 @@ export default function VideoAnalyticsPage({ params }: { params: { videoId: stri
       setError(errorMessage);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -93,31 +87,21 @@ export default function VideoAnalyticsPage({ params }: { params: { videoId: stri
     <MainLayout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <Link
-              href="/admin/analytics"
-              className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Analytics
-            </Link>
-            <div className="flex items-center gap-3 mb-2">
-              <Target className="h-8 w-8 text-[#0B214A]" />
-              <h1 className="text-3xl font-bold text-gray-900">Video Analytics</h1>
-            </div>
-            {analytics && (
-              <p className="text-gray-600">{analytics.videoTitle}</p>
-            )}
-          </div>
-          <button
-            onClick={() => fetchAnalytics(true)}
-            disabled={refreshing || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        <div>
+          <Link
+            href="/admin/analytics"
+            className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+            <ArrowLeft className="h-4 w-4" />
+            Back to Analytics
+          </Link>
+          <div className="flex items-center gap-3 mb-2">
+            <Target className="h-8 w-8 text-[#0B214A]" />
+            <h1 className="text-3xl font-bold text-gray-900">Video Analytics</h1>
+          </div>
+          {analytics && (
+            <p className="text-gray-600">{analytics.videoTitle}</p>
+          )}
         </div>
 
         {/* Error Banner */}

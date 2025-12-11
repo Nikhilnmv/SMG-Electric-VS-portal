@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode, useState } from 'react';
-import Image from 'next/image';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -10,7 +9,6 @@ interface AuthLayoutProps {
 
 export default function AuthLayout({ children, subtitle = 'Login with username' }: AuthLayoutProps) {
   const [imageError, setImageError] = useState(false);
-  const [logoError, setLogoError] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
@@ -19,28 +17,8 @@ export default function AuthLayout({ children, subtitle = 'Login with username' 
         <div className="max-w-md w-full">
           {/* Branding Section */}
           <div className="text-center mb-10">
-            {/* Logo Image */}
-            <div className="mb-4 flex justify-center">
-              {!logoError ? (
-                <Image 
-                  src="/logo.png" 
-                  alt="SMG Logo" 
-                  width={80} 
-                  height={80}
-                  className="object-contain"
-                  priority
-                  unoptimized
-                  onError={() => setLogoError(true)}
-                />
-              ) : (
-                <div className="w-20 h-20 bg-gray-200 rounded flex items-center justify-center">
-                  <span className="text-gray-400 text-xs">Logo</span>
-                </div>
-              )}
-            </div>
-            
             {/* SMG Logo Text */}
-            <h1 className="font-serif text-[56px] font-bold text-[#0A1A3A] mb-3 tracking-tight">
+            <h1 className="font-serif text-[56px] font-extrabold text-[#0A1A3A] mb-3 tracking-tight uppercase">
               SMG
             </h1>
             

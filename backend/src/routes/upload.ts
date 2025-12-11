@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { uploadController } from '../controllers/uploadController';
 
-export const uploadRouter = Router();
+export const uploadRouter: Router = Router();
 
 // All upload routes require authentication
 uploadRouter.use(requireAuth);

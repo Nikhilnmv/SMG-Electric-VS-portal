@@ -1,4 +1,4 @@
-import { envsafe, str, num, host, port, bool } from 'envsafe';
+import { envsafe, str, num, port, bool } from 'envsafe';
 
 /**
  * Environment variable validation for worker service
@@ -11,7 +11,7 @@ export const env = envsafe({
   }),
 
   // Redis
-  REDIS_HOST: host({
+  REDIS_HOST: str({
     desc: 'Redis host',
     default: 'localhost',
     allowEmpty: false,

@@ -1,5 +1,14 @@
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
+
+// Helper to extract IP address from request
+const getIpAddress = (req: Request): string => {
+  return (req.ip || 
+    req.headers['x-forwarded-for']?.toString().split(',')[0] || 
+    req.headers['x-real-ip']?.toString() || 
+    req.socket.remoteAddress || 
+    'unknown').trim();
+};
 
 /**
  * Global rate limiter: 100 requests per 15 minutes per IP
@@ -13,12 +22,8 @@ export const globalRateLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Use ipKeyGenerator helper to properly handle IPv6 addresses
-  // Extract IP from request and normalize it using ipKeyGenerator
-  keyGenerator: (req: Request): string => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    return ipKeyGenerator(ip);
-  },
+  // Use custom key generator to properly handle IPv6 addresses
+  keyGenerator: (req: Request) => getIpAddress(req),
   // Custom handler for when limit is exceeded
   handler: (req: Request, res: Response) => {
     const rateLimitInfo = (req as any).rateLimit;
@@ -45,12 +50,8 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Use ipKeyGenerator helper to properly handle IPv6 addresses
-  // Extract IP from request and normalize it using ipKeyGenerator
-  keyGenerator: (req: Request): string => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    return ipKeyGenerator(ip);
-  },
+  // Use custom key generator to properly handle IPv6 addresses
+  keyGenerator: (req: Request) => getIpAddress(req),
   handler: (req: Request, res: Response) => {
     const rateLimitInfo = (req as any).rateLimit;
     res.status(429).json({

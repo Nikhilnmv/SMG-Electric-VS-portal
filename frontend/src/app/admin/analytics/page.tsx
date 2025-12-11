@@ -4,7 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { analyticsApi } from '@/lib/api';
-import { BarChart3, Clock, Users, Target, RefreshCw, AlertCircle, TrendingUp } from 'lucide-react';
+import { BarChart3, Clock, Users, Target, AlertCircle, TrendingUp } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -45,16 +45,11 @@ export default function AdminAnalyticsPage() {
   const [dailyWatchTime, setDailyWatchTime] = useState<Array<{ date: string; watchTime: number }>>([]);
   const [focusUsage, setFocusUsage] = useState<Array<{ date: string; sessions: number }>>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAnalytics = async (showRefreshing = false) => {
+  const fetchAnalytics = async () => {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       // Fetch admin dashboard data
@@ -107,7 +102,6 @@ export default function AdminAnalyticsPage() {
       setError(errorMessage);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -128,22 +122,12 @@ export default function AdminAnalyticsPage() {
     <MainLayout>
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <BarChart3 className="h-8 w-8 text-[#0B214A]" />
-              <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
-            </div>
-            <p className="text-gray-600">Platform-wide analytics and insights</p>
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <BarChart3 className="h-8 w-8 text-[#0B214A]" />
+            <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
           </div>
-          <button
-            onClick={() => fetchAnalytics(true)}
-            disabled={refreshing || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <p className="text-gray-600">Platform-wide analytics and insights</p>
         </div>
 
         {/* Error Banner */}

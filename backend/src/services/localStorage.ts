@@ -147,31 +147,90 @@ export function getHlsUrlPath(videoId: string, categoryRole?: string): string {
 
 /**
  * Delete local video files
+ * Deletes raw video, HLS files, and thumbnails
  */
 export async function deleteLocalVideo(videoId: string): Promise<void> {
-  const rawDir = path.join(RAW_DIR, videoId);
-  const hlsDir = path.join(HLS_DIR, videoId);
-  const hlsDirWithCategory = path.join(HLS_DIR); // Will need to search for category subdirs
+  const errors: string[] = [];
+  const deleted: string[] = [];
 
   // Delete raw video directory
+  const rawDir = path.join(RAW_DIR, videoId);
   if (fs.existsSync(rawDir)) {
-    fs.rmSync(rawDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(rawDir, { recursive: true, force: true });
+      deleted.push(`raw video directory: ${rawDir}`);
+      console.log(`[LocalStorage] Deleted raw video directory: ${rawDir}`);
+    } catch (error: any) {
+      const errorMsg = `Failed to delete raw video directory ${rawDir}: ${error.message}`;
+      errors.push(errorMsg);
+      console.error(`[LocalStorage] ${errorMsg}`);
+    }
   }
 
   // Delete HLS directory (check both with and without category)
+  const hlsDir = path.join(HLS_DIR, videoId);
   if (fs.existsSync(hlsDir)) {
-    fs.rmSync(hlsDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(hlsDir, { recursive: true, force: true });
+      deleted.push(`HLS directory: ${hlsDir}`);
+      console.log(`[LocalStorage] Deleted HLS directory: ${hlsDir}`);
+    } catch (error: any) {
+      const errorMsg = `Failed to delete HLS directory ${hlsDir}: ${error.message}`;
+      errors.push(errorMsg);
+      console.error(`[LocalStorage] ${errorMsg}`);
+    }
   }
 
-  // Also check category subdirectories
-  if (fs.existsSync(hlsDirWithCategory)) {
-    const categoryDirs = fs.readdirSync(hlsDirWithCategory);
-    for (const categoryDir of categoryDirs) {
-      const categoryHlsDir = path.join(hlsDirWithCategory, categoryDir, videoId);
-      if (fs.existsSync(categoryHlsDir)) {
-        fs.rmSync(categoryHlsDir, { recursive: true, force: true });
+  // Also check category subdirectories in HLS
+  const prefixByCategory = process.env.HLS_PREFIX_BY_CATEGORY === 'true';
+  if (prefixByCategory && fs.existsSync(HLS_DIR)) {
+    try {
+      const categoryDirs = fs.readdirSync(HLS_DIR, { withFileTypes: true });
+      for (const categoryDir of categoryDirs) {
+        if (categoryDir.isDirectory()) {
+          const categoryHlsDir = path.join(HLS_DIR, categoryDir.name, videoId);
+          if (fs.existsSync(categoryHlsDir)) {
+            try {
+              fs.rmSync(categoryHlsDir, { recursive: true, force: true });
+              deleted.push(`category HLS directory: ${categoryHlsDir}`);
+              console.log(`[LocalStorage] Deleted category HLS directory: ${categoryHlsDir}`);
+            } catch (error: any) {
+              const errorMsg = `Failed to delete category HLS directory ${categoryHlsDir}: ${error.message}`;
+              errors.push(errorMsg);
+              console.error(`[LocalStorage] ${errorMsg}`);
+            }
+          }
+        }
       }
+    } catch (error: any) {
+      const errorMsg = `Failed to read HLS directory for category search: ${error.message}`;
+      errors.push(errorMsg);
+      console.error(`[LocalStorage] ${errorMsg}`);
     }
+  }
+
+  // Delete thumbnail directory
+  const thumbnailDir = path.join(THUMBNAILS_DIR, videoId);
+  if (fs.existsSync(thumbnailDir)) {
+    try {
+      fs.rmSync(thumbnailDir, { recursive: true, force: true });
+      deleted.push(`thumbnail directory: ${thumbnailDir}`);
+      console.log(`[LocalStorage] Deleted thumbnail directory: ${thumbnailDir}`);
+    } catch (error: any) {
+      const errorMsg = `Failed to delete thumbnail directory ${thumbnailDir}: ${error.message}`;
+      errors.push(errorMsg);
+      console.error(`[LocalStorage] ${errorMsg}`);
+    }
+  }
+
+  // Log summary
+  if (deleted.length > 0) {
+    console.log(`[LocalStorage] Successfully deleted ${deleted.length} item(s) for video ${videoId}`);
+  }
+  if (errors.length > 0) {
+    console.warn(`[LocalStorage] Encountered ${errors.length} error(s) while deleting files for video ${videoId}`);
+    // Throw error if any deletions failed, so the controller knows about it
+    throw new Error(`Failed to delete some files: ${errors.join('; ')}`);
   }
 }
 

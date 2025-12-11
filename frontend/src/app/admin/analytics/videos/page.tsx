@@ -4,7 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { analyticsApi } from '@/lib/api';
-import { BarChart3, RefreshCw, AlertCircle, Eye, Clock, TrendingUp } from 'lucide-react';
+import { BarChart3, AlertCircle, Eye, Clock, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -23,18 +23,13 @@ export default function VideosAnalyticsPage() {
 
   const [videos, setVideos] = useState<VideoAnalytics[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<keyof VideoAnalytics>('views');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const fetchVideos = async (showRefreshing = false) => {
+  const fetchVideos = async () => {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       const dashboardData = await analyticsApi.getAdminDashboard();
@@ -56,7 +51,6 @@ export default function VideosAnalyticsPage() {
       setError(errorMessage);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -94,22 +88,12 @@ export default function VideosAnalyticsPage() {
   return (
     <MainLayout>
       <div className="space-y-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <BarChart3 className="h-8 w-8 text-[#0B214A]" />
-              <h1 className="text-3xl font-bold text-gray-900">Video Analytics</h1>
-            </div>
-            <p className="text-gray-600">Performance metrics for all videos</p>
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <BarChart3 className="h-8 w-8 text-[#0B214A]" />
+            <h1 className="text-3xl font-bold text-gray-900">Video Analytics</h1>
           </div>
-          <button
-            onClick={() => fetchVideos(true)}
-            disabled={refreshing || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <p className="text-gray-600">Performance metrics for all videos</p>
         </div>
 
         {error && (

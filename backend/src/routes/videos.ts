@@ -24,11 +24,10 @@ const upload = multer({
   },
 });
 
-export const videoRouter = Router();
+export const videoRouter: Router = Router();
 
 // Routes that need auth for category filtering
 videoRouter.get('/', requireAuth, videoController.list);
-videoRouter.get('/category', requireAuth, videoController.listByCategory);
 videoRouter.get('/my-videos', requireAuth, videoController.myVideos);
 videoRouter.get('/watch-history', requireAuth, videoController.getWatchHistory);
 videoRouter.get('/:id', requireAuth, videoController.getById);

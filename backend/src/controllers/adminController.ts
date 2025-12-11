@@ -2,260 +2,13 @@ import { Request, Response } from 'express';
 import { ApiResponse, CategoryRole } from '@vs-platform/types';
 import { prisma } from '../lib/db';
 import { AuthRequest } from '../middleware/auth';
-import { deleteFromS3, deletePrefixFromS3 } from '../services/s3';
 import { AuditService } from '../services/auditService';
 import { UserService } from '../services/user.service';
 import { EmailService } from '../services/email.service';
+import { env } from '../config/env';
 import bcrypt from 'bcryptjs';
 
 export const adminController = {
-  /**
-   * Get pending videos (UPLOADED, PROCESSING, or READY but not APPROVED)
-   */
-  getPendingVideos: async (req: Request, res: Response) => {
-    try {
-      const videos = await prisma.video.findMany({
-        where: {
-          status: {
-            in: ['UPLOADED', 'PROCESSING', 'READY'],
-          },
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      const formattedVideos = videos.map((video) => ({
-        id: video.id,
-        title: video.title,
-        userId: video.userId,
-        uploadDate: video.createdAt,
-        status: video.status,
-        hlsPath: video.hlsPath,
-        userEmail: video.user.email,
-      }));
-
-      res.json({
-        success: true,
-        data: formattedVideos,
-      } as ApiResponse<typeof formattedVideos>);
-    } catch (error) {
-      console.error('Get pending videos error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch pending videos',
-      } as ApiResponse<null>);
-    }
-  },
-
-  /**
-   * List all videos (for admin dashboard)
-   */
-  listVideos: async (req: Request, res: Response) => {
-    try {
-      const videos = await prisma.video.findMany({
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      res.json({
-        success: true,
-        data: videos,
-      } as ApiResponse<typeof videos>);
-    } catch (error) {
-      console.error('List videos error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch videos',
-      } as ApiResponse<null>);
-    }
-  },
-
-  /**
-   * Approve a video (change status to APPROVED)
-   */
-  approveVideo: async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-
-      const video = await prisma.video.findUnique({
-        where: { id },
-      });
-
-      if (!video) {
-        return res.status(404).json({
-          success: false,
-          error: 'Video not found',
-        } as ApiResponse<null>);
-      }
-
-      // Allow approving videos that are READY, UPLOADED, or PROCESSING
-      // PROCESSING videos will be approved but won't be visible to users until transcoding completes (status becomes READY)
-      if (!['READY', 'UPLOADED', 'PROCESSING'].includes(video.status)) {
-        return res.status(400).json({
-          success: false,
-          error: `Cannot approve video with status ${video.status}. Video must be READY, UPLOADED, or PROCESSING.`,
-        } as ApiResponse<null>);
-      }
-
-      const updatedVideo = await prisma.video.update({
-        where: { id },
-        data: {
-          status: 'APPROVED',
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-      });
-
-      // Log audit event
-      if (req.user?.id) {
-        await AuditService.logVideoApproval(
-          req.user.id,
-          id,
-          req.body.notes
-        );
-      }
-
-      res.json({
-        success: true,
-        data: updatedVideo,
-        message: 'Video approved successfully',
-      } as ApiResponse<typeof updatedVideo>);
-    } catch (error) {
-      console.error('Approve video error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to approve video',
-      } as ApiResponse<null>);
-    }
-  },
-
-  /**
-   * Reject a video (change status to REJECTED, optionally delete from S3)
-   */
-  rejectVideo: async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { deleteFromStorage } = req.body; // Optional flag to delete from S3
-
-      const video = await prisma.video.findUnique({
-        where: { id },
-      });
-
-      if (!video) {
-        return res.status(404).json({
-          success: false,
-          error: 'Video not found',
-        } as ApiResponse<null>);
-      }
-
-      // Update status to REJECTED
-      const updatedVideo = await prisma.video.update({
-        where: { id },
-        data: {
-          status: 'REJECTED',
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-      });
-
-      // Log audit event
-      if (req.user?.id) {
-        await AuditService.logVideoRejection(
-          req.user.id,
-          id,
-          req.body.reason || 'No reason provided',
-          req.body.notes
-        );
-      }
-
-      // Optionally delete from storage
-      if (deleteFromStorage) {
-        try {
-          const STORAGE_MODE = process.env.STORAGE_MODE || 'local';
-          
-          if (STORAGE_MODE === 'local') {
-            // Delete from local storage
-            const { deleteLocalVideo } = await import('../services/localStorage');
-            await deleteLocalVideo(video.id);
-          } else {
-            // Delete from S3
-            if (video.s3Key) {
-              try {
-                await deleteFromS3(video.s3Key);
-              } catch (s3Error) {
-                console.error('Error deleting raw video from S3:', s3Error);
-                // Continue with HLS deletion
-              }
-            }
-
-            // Delete HLS files if they exist
-            if (video.hlsPath) {
-              try {
-                const hlsPrefix = video.hlsPath.substring(0, video.hlsPath.lastIndexOf('/'));
-                await deletePrefixFromS3(hlsPrefix);
-              } catch (hlsError) {
-                console.error('Error deleting HLS files from S3:', hlsError);
-                // Continue - video is already marked as rejected
-              }
-            }
-          }
-        } catch (storageError) {
-          console.error('Error deleting from storage:', storageError);
-          // Continue even if deletion fails - video is already marked as rejected
-          // Return success but with a warning message
-          return res.json({
-            success: true,
-            data: updatedVideo,
-            message: 'Video rejected successfully. Some files may not have been deleted from storage.',
-            warning: storageError instanceof Error ? storageError.message : 'Storage deletion failed',
-          } as ApiResponse<typeof updatedVideo>);
-        }
-      }
-
-      res.json({
-        success: true,
-        data: updatedVideo,
-        message: 'Video rejected successfully',
-      } as ApiResponse<typeof updatedVideo>);
-    } catch (error) {
-      console.error('Reject video error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to reject video',
-      } as ApiResponse<null>);
-    }
-  },
-
   /**
    * List all users
    */
@@ -265,6 +18,7 @@ export const adminController = {
         select: {
           id: true,
           email: true,
+          username: true,
           role: true,
           categoryRole: true,
           createdAt: true,
@@ -301,20 +55,13 @@ export const adminController = {
    */
   getStats: async (req: Request, res: Response) => {
     try {
-      const [totalUsers, totalVideos, completedVideos, pendingVideos] = await Promise.all([
+      const [totalUsers, totalVideos, completedVideos] = await Promise.all([
         prisma.user.count(),
         prisma.video.count(),
         prisma.video.count({
           where: {
             status: {
               in: ['READY', 'APPROVED'],
-            },
-          },
-        }),
-        prisma.video.count({
-          where: {
-            status: {
-              in: ['UPLOADED', 'PROCESSING'],
             },
           },
         }),
@@ -326,7 +73,7 @@ export const adminController = {
           totalUsers,
           totalVideos,
           completedVideos,
-          pendingApprovals: pendingVideos,
+          pendingApprovals: 0,
         },
       } as ApiResponse<{
         totalUsers: number;
@@ -585,7 +332,7 @@ export const adminController = {
         throw new Error('User created but not found');
       }
 
-      // Log audit event
+      // Log audit event (store initial password for admin retrieval)
       await AuditService.logUserCreation(
         req.user.id,
         result.id,
@@ -595,6 +342,7 @@ export const adminController = {
           role: user.role,
           categoryRole: user.categoryRole,
           passwordMustChange: result.passwordMustChange,
+          initialPassword: result.password, // Store initial password in audit log
         }
       );
 
@@ -666,6 +414,236 @@ export const adminController = {
       res.status(500).json({
         success: false,
         error: 'Failed to create user',
+        details: error?.message || 'Unknown error',
+      } as ApiResponse<null>);
+    }
+  },
+
+  /**
+   * Send credentials email to an existing user
+   * Generates a new temporary password and emails it to the user
+   */
+  sendUserCredentialsEmail: async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'Not authenticated',
+        } as ApiResponse<null>);
+      }
+
+      const { id } = req.params;
+
+      // Find user
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          isActive: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found',
+        } as ApiResponse<null>);
+      }
+
+      if (!user.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: 'User is not active',
+        } as ApiResponse<null>);
+      }
+
+      if (!user.username) {
+        return res.status(400).json({
+          success: false,
+          error: 'User does not have a username',
+        } as ApiResponse<null>);
+      }
+
+      // Generate a new temporary password
+      const newPassword = UserService.generateTempPassword(12);
+
+      // Update user password and set passwordMustChange flag
+      await prisma.user.update({
+        where: { id },
+        data: {
+          passwordHash: await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS),
+          passwordMustChange: true,
+          tokenVersion: { increment: 1 }, // Invalidate existing tokens
+          lastPasswordChangeAt: new Date(),
+        },
+      });
+
+      // Send credentials email
+      try {
+        await EmailService.sendUserCredentialsEmail(
+          user.email,
+          user.username,
+          newPassword,
+          true // isTemporary
+        );
+      } catch (emailError) {
+        console.error('[EmailService] Failed to send credentials email:', emailError);
+        // Still return success since password was reset
+        // But log the error
+      }
+
+      // Note: We could add a separate audit log method for credentials email sending
+      // For now, we'll just log via console since this is a different action than user creation
+
+      res.json({
+        success: true,
+        message: 'Credentials email sent successfully. User will need to use the new password on next login.',
+      } as ApiResponse<null>);
+    } catch (error: any) {
+      console.error('Send credentials email error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send credentials email',
+        details: error?.message || 'Unknown error',
+      } as ApiResponse<null>);
+    }
+  },
+
+  /**
+   * Delete a user (admin only)
+   */
+  deleteUser: async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'Not authenticated',
+        } as ApiResponse<null>);
+      }
+
+      const { id } = req.params;
+
+      // Prevent admin from deleting themselves
+      if (req.user.id === id) {
+        return res.status(400).json({
+          success: false,
+          error: 'You cannot delete your own account',
+        } as ApiResponse<null>);
+      }
+
+      // Find user
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found',
+        } as ApiResponse<null>);
+      }
+
+      // Delete user (cascade will handle related records like videos)
+      await prisma.user.delete({
+        where: { id },
+      });
+
+      // Log audit event
+      await AuditService.log({
+        actorId: req.user.id,
+        targetUserId: id,
+        action: 'USER_DELETED',
+        metadata: {
+          deletedUserEmail: user.email,
+          deletedUsername: user.username,
+        },
+      });
+
+      res.json({
+        success: true,
+        message: 'User deleted successfully',
+      } as ApiResponse<null>);
+    } catch (error: any) {
+      console.error('Delete user error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete user',
+        details: error?.message || 'Unknown error',
+      } as ApiResponse<null>);
+    }
+  },
+
+  /**
+   * Get initial password for a user from audit log
+   */
+  getUserInitialPassword: async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({
+          success: false,
+          error: 'Not authenticated',
+        } as ApiResponse<null>);
+      }
+
+      const { id } = req.params;
+
+      // Find the USER_CREATED audit log entry for this user
+      const auditLog = await prisma.auditLog.findFirst({
+        where: {
+          targetUserId: id,
+          action: 'USER_CREATED',
+        },
+        orderBy: {
+          timestamp: 'asc', // Get the first creation entry
+        },
+      });
+
+      if (!auditLog || !auditLog.metadata) {
+        return res.status(404).json({
+          success: false,
+          error: 'Initial password not found. User may have been created before this feature was added.',
+        } as ApiResponse<null>);
+      }
+
+      // Parse metadata to get initial password
+      let metadata: any = {};
+      try {
+        metadata = JSON.parse(auditLog.metadata);
+      } catch (e) {
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to parse audit log metadata',
+        } as ApiResponse<null>);
+      }
+
+      const initialPassword = metadata.initialPassword;
+
+      if (!initialPassword) {
+        return res.status(404).json({
+          success: false,
+          error: 'Initial password not found in audit log',
+        } as ApiResponse<null>);
+      }
+
+      res.json({
+        success: true,
+        data: {
+          initialPassword,
+          createdAt: auditLog.timestamp,
+        },
+      } as ApiResponse<{ initialPassword: string; createdAt: Date }>);
+    } catch (error: any) {
+      console.error('Get user initial password error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve initial password',
         details: error?.message || 'Unknown error',
       } as ApiResponse<null>);
     }

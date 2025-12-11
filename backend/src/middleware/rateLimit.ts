@@ -1,6 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
 
+// Helper to extract IP address from request
+const getIpAddress = (req: Request): string => {
+  return (req.ip || 
+    req.headers['x-forwarded-for']?.toString().split(',')[0] || 
+    req.headers['x-real-ip']?.toString() || 
+    req.socket.remoteAddress || 
+    'unknown').trim();
+};
+
 /**
  * Rate limiter for forgot password endpoint
  * Limits: 5 requests per hour per IP, 3 requests per hour per username
@@ -16,14 +25,14 @@ export const rateLimitForgotPassword = rateLimit({
   legacyHeaders: false,
   // Custom key generator to include username in rate limit key
   keyGenerator: (req: Request) => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = getIpAddress(req);
     const username = req.body?.username || '';
     // Create separate keys for IP and username
     return `forgot-password:${ip}:${username}`;
   },
   // Custom handler to check both IP and username limits
   handler: (req: Request, res: Response) => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = getIpAddress(req);
     const username = req.body?.username || '';
     
     // Check if it's an IP limit or username limit

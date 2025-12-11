@@ -26,11 +26,14 @@ export const analyticsController = {
         select: { categoryRole: true },
       });
 
-      // Validate required fields early
-      if (!req.body.videoId) {
+      // Validate required fields early - support both videoId (legacy) and lessonId (new)
+      const videoId = req.body.videoId;
+      const lessonId = req.body.lessonId;
+      
+      if (!videoId && !lessonId) {
         return res.status(400).json({
           success: false,
-          error: 'videoId is required',
+          error: 'Either videoId or lessonId is required',
         } as ApiResponse<null>);
       }
 
@@ -41,12 +44,22 @@ export const analyticsController = {
         } as ApiResponse<null>);
       }
 
-      // Validate videoId is a valid UUID format
+      // Validate IDs are valid UUID or CUID format
+      // UUID format: 8-4-4-4-12 hex characters with dashes
+      // CUID format: 25 characters starting with 'c'
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(req.body.videoId)) {
+      const cuidRegex = /^c[a-z0-9]{24}$/i;
+      
+      if (videoId && !uuidRegex.test(videoId) && !cuidRegex.test(videoId)) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid videoId format (must be a valid UUID)',
+          error: 'Invalid videoId format (must be a valid UUID or CUID)',
+        } as ApiResponse<null>);
+      }
+      if (lessonId && !uuidRegex.test(lessonId) && !cuidRegex.test(lessonId)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid lessonId format (must be a valid UUID or CUID)',
         } as ApiResponse<null>);
       }
 
@@ -61,7 +74,8 @@ export const analyticsController = {
 
       const eventData = {
         userId: req.user.id,
-        videoId: req.body.videoId,
+        videoId: videoId || null,
+        lessonId: lessonId || null,
         timestamp: req.body.timestamp || new Date().toISOString(),
         eventType: req.body.eventType,
         currentTime: req.body.currentTime,
@@ -86,47 +100,142 @@ export const analyticsController = {
 
       const validatedEvent = validationResult.data;
 
-      // Verify video exists
-      const video = await prisma.video.findUnique({
-        where: { id: validatedEvent.videoId },
-        select: { id: true, duration: true },
-      });
+      // Verify video or lesson exists
+      if (validatedEvent.videoId) {
+        const video = await prisma.video.findUnique({
+          where: { id: validatedEvent.videoId },
+          select: { id: true, duration: true },
+        });
 
-      if (!video) {
-        return res.status(404).json({
-          success: false,
-          error: 'Video not found',
-        } as ApiResponse<null>);
+        if (!video) {
+          return res.status(404).json({
+            success: false,
+            error: 'Video not found',
+          } as ApiResponse<null>);
+        }
+      } else if (validatedEvent.lessonId) {
+        const lesson = await prisma.lesson.findUnique({
+          where: { id: validatedEvent.lessonId },
+          select: { id: true, duration: true, moduleId: true },
+        });
+
+        if (!lesson) {
+          return res.status(404).json({
+            success: false,
+            error: 'Lesson not found',
+          } as ApiResponse<null>);
+        }
+      }
+
+      // Get duration from video or lesson
+      let duration = 0;
+      if (validatedEvent.videoId) {
+        const video = await prisma.video.findUnique({
+          where: { id: validatedEvent.videoId },
+          select: { duration: true },
+        });
+        duration = video?.duration || validatedEvent.duration || 0;
+      } else if (validatedEvent.lessonId) {
+        const lesson = await prisma.lesson.findUnique({
+          where: { id: validatedEvent.lessonId },
+          select: { duration: true },
+        });
+        duration = lesson?.duration || validatedEvent.duration || 0;
       }
 
       // Write event to ClickHouse events_raw table
       const clickhouse = getClickHouseClient();
-      await clickhouse.insert({
-        table: 'events_raw',
-        values: [{
-          userId: validatedEvent.userId,
-          videoId: validatedEvent.videoId,
-          eventType: validatedEvent.eventType,
-          timestamp: validatedEvent.timestamp || new Date().toISOString(),
-          currentTime: validatedEvent.currentTime || 0,
-          fullDuration: validatedEvent.duration || video.duration || 0,
-          device: validatedEvent.device || device,
-          categoryRole: validatedEvent.categoryRole || user?.categoryRole || 'INTERN',
-          sessionId: validatedEvent.sessionId || uuidv4(),
-          playbackQuality: validatedEvent.playbackQuality || '',
-        }],
-        format: 'JSONEachRow',
-      });
+      
+      // Prepare the insert data
+      const insertData: any = {
+        userId: validatedEvent.userId,
+        videoId: validatedEvent.videoId || '',
+        eventType: validatedEvent.eventType,
+        timestamp: validatedEvent.timestamp || new Date().toISOString(),
+        currentTime: validatedEvent.currentTime || 0,
+        fullDuration: duration || 0,
+        device: validatedEvent.device || device,
+        categoryRole: validatedEvent.categoryRole || user?.categoryRole || 'INTERN',
+        sessionId: validatedEvent.sessionId || uuidv4(),
+        playbackQuality: validatedEvent.playbackQuality || '',
+      };
+      
+      // Add lessonId if provided (column may not exist in older table schemas)
+      if (validatedEvent.lessonId) {
+        insertData.lessonId = validatedEvent.lessonId;
+      }
+      
+      try {
+        await clickhouse.insert({
+          table: 'events_raw',
+          values: [insertData],
+          format: 'JSONEachRow',
+        });
+      } catch (insertError: any) {
+        // If error is due to missing lessonId column, try without it
+        if (insertError?.message?.includes('lessonId') || insertError?.message?.includes('Missing columns')) {
+          console.warn('ClickHouse insert failed due to lessonId column, retrying without it');
+          delete insertData.lessonId;
+          await clickhouse.insert({
+            table: 'events_raw',
+            values: [insertData],
+            format: 'JSONEachRow',
+          });
+        } else {
+          throw insertError;
+        }
+      }
+
+      // Also save to PostgreSQL for backward compatibility
+      // Map Zod event types to Prisma EventType enum
+      const eventTypeMap: Record<string, 'PLAY' | 'PAUSE' | 'PROGRESS' | 'COMPLETE'> = {
+        'VIDEO_PLAY': 'PLAY',
+        'VIDEO_PAUSE': 'PAUSE',
+        'VIDEO_PROGRESS': 'PROGRESS',
+        'VIDEO_COMPLETE': 'COMPLETE',
+      };
+      
+      const prismaEventType = eventTypeMap[validatedEvent.eventType];
+      
+      if (prismaEventType) {
+        if (validatedEvent.videoId) {
+          await prisma.analyticsEvent.create({
+            data: {
+              videoId: validatedEvent.videoId,
+              userId: validatedEvent.userId,
+              eventType: prismaEventType,
+              progress: validatedEvent.currentTime,
+            },
+          });
+        } else if (validatedEvent.lessonId) {
+          await prisma.analyticsEvent.create({
+            data: {
+              lessonId: validatedEvent.lessonId,
+              userId: validatedEvent.userId,
+              eventType: prismaEventType,
+              progress: validatedEvent.currentTime,
+            },
+          });
+        }
+      }
 
       res.json({
         success: true,
         data: { message: 'Event tracked successfully' },
       } as ApiResponse<{ message: string }>);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Track event error:', error);
+      console.error('Error stack:', error?.stack);
+      console.error('Error message:', error?.message);
+      console.error('Request body:', JSON.stringify(req.body, null, 2));
+      console.error('User ID:', req.user?.id);
+      
+      // Provide more detailed error message
+      const errorMessage = error?.message || 'Failed to track event';
       res.status(500).json({
         success: false,
         error: 'Failed to track event',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       } as ApiResponse<null>);
     }
   },
@@ -699,14 +808,17 @@ export const analyticsController = {
         } as ApiResponse<null>);
       }
 
-      // Videos watched
+      // Videos watched - count unique videos that have been opened
       let videosWatched = 0;
       try {
         const videosWatchedResult = await clickhouse.query({
           query: `
             SELECT uniqExact(videoId) as videosWatched
             FROM events_raw
-            WHERE userId = {userId:String} AND eventType = 'VIDEO_OPENED'
+            WHERE userId = {userId:String} 
+              AND eventType = 'VIDEO_OPENED'
+              AND videoId != ''
+              AND videoId IS NOT NULL
           `,
           query_params: { userId },
           format: 'JSONEachRow',
@@ -717,45 +829,94 @@ export const analyticsController = {
         // Continue with default value
       }
 
-      // Total watch time
+      // Total watch time - sum of maximum progress reached per unique video
+      // This avoids double counting when a user watches the same video multiple times
       let totalWatchTime = 0;
       try {
         const totalWatchTimeResult = await clickhouse.query({
           query: `
-            SELECT sum(currentTime) as totalWatchTime
-            FROM events_raw
-            WHERE userId = {userId:String} AND eventType = 'VIDEO_PROGRESS'
+            SELECT 
+              sum(maxProgress) as totalWatchTime
+            FROM (
+              SELECT 
+                videoId,
+                max(toFloat64OrZero(currentTime)) as maxProgress
+              FROM events_raw
+              WHERE userId = {userId:String} 
+                AND eventType = 'VIDEO_PROGRESS'
+                AND videoId != ''
+                AND videoId IS NOT NULL
+              GROUP BY videoId
+            )
           `,
           query_params: { userId },
           format: 'JSONEachRow',
         });
-        totalWatchTime = Number((await totalWatchTimeResult.json() as any[])[0]?.totalWatchTime || 0);
+        const watchTimeData = (await totalWatchTimeResult.json() as any[])[0] || { totalWatchTime: 0 };
+        totalWatchTime = Number(watchTimeData.totalWatchTime || 0);
       } catch (error: any) {
         console.error('[Analytics] Error fetching total watch time:', error);
-        // Continue with default value
+        // Fallback: sum all progress events (less accurate but works if subquery fails)
+        try {
+          const fallbackResult = await clickhouse.query({
+            query: `
+              SELECT 
+                sum(toFloat64OrZero(currentTime)) as totalWatchTime
+              FROM (
+                SELECT 
+                  videoId,
+                  timestamp,
+                  currentTime,
+                  row_number() OVER (PARTITION BY videoId ORDER BY timestamp DESC) as rn
+                FROM events_raw
+                WHERE userId = {userId:String} 
+                  AND eventType = 'VIDEO_PROGRESS'
+                  AND videoId != ''
+                  AND videoId IS NOT NULL
+              )
+              WHERE rn = 1
+            `,
+            query_params: { userId },
+            format: 'JSONEachRow',
+          });
+          const fallbackData = (await fallbackResult.json() as any[])[0] || { totalWatchTime: 0 };
+          totalWatchTime = Number(fallbackData.totalWatchTime || 0);
+        } catch (fallbackError: any) {
+          console.error('[Analytics] Fallback watch time calculation also failed:', fallbackError);
+          totalWatchTime = 0;
+        }
       }
 
-      // Completion rate
+      // Completion rate - count unique videos completed vs unique videos opened
+      // Completion rate = (unique videos completed / unique videos opened) * 100, capped at 100%
       let completionRate = 0;
       try {
         const completionResult = await clickhouse.query({
           query: `
             SELECT 
-              countIf(eventType = 'VIDEO_COMPLETE') as completes,
-              countIf(eventType = 'VIDEO_OPENED') as opens
+              uniqExactIf(videoId, eventType = 'VIDEO_COMPLETE' AND videoId != '' AND videoId IS NOT NULL) as completedVideos,
+              uniqExactIf(videoId, eventType = 'VIDEO_OPENED' AND videoId != '' AND videoId IS NOT NULL) as openedVideos
             FROM events_raw
             WHERE userId = {userId:String}
           `,
           query_params: { userId },
           format: 'JSONEachRow',
         });
-        const completionData = (await completionResult.json() as any[])[0] || { completes: 0, opens: 0 };
-        completionRate = completionData.opens > 0 
-          ? (completionData.completes / completionData.opens) * 100 
-          : 0;
+        const completionData = (await completionResult.json() as any[])[0] || { completedVideos: 0, openedVideos: 0 };
+        const completedVideos = Number(completionData.completedVideos || 0);
+        const openedVideos = Number(completionData.openedVideos || 0);
+        
+        // Calculate completion rate and cap at 100%
+        // This ensures we never show more than 100% completion rate
+        if (openedVideos > 0) {
+          completionRate = Math.min(100, Math.round((completedVideos / openedVideos) * 100 * 10) / 10); // Round to 1 decimal place
+        } else {
+          completionRate = 0;
+        }
       } catch (error: any) {
         console.error('[Analytics] Error fetching completion rate:', error);
         // Continue with default value
+        completionRate = 0;
       }
 
       // Streak insights (consecutive days with activity)

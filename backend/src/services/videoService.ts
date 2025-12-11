@@ -1,9 +1,9 @@
 import { prisma } from '../lib/db';
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import IORedis, { RedisOptions } from 'ioredis';
 
 // Parse Redis connection from REDIS_URL or individual env vars
-let redisConfig: IORedis.RedisOptions;
+let redisConfig: RedisOptions;
 if (process.env.REDIS_URL) {
   const url = new URL(process.env.REDIS_URL);
   redisConfig = {

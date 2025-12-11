@@ -4,7 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import { analyticsApi } from '@/lib/api';
-import { Users, RefreshCw, AlertCircle, Clock, Target } from 'lucide-react';
+import { Users, AlertCircle, Clock, Target } from 'lucide-react';
 
 interface UserAnalytics {
   userId: string;
@@ -19,16 +19,11 @@ export default function UsersAnalyticsPage() {
 
   const [users, setUsers] = useState<UserAnalytics[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUsers = async (showRefreshing = false) => {
+  const fetchUsers = async () => {
     try {
-      if (showRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       // Note: This would require a new endpoint to get all users' analytics
@@ -40,7 +35,6 @@ export default function UsersAnalyticsPage() {
       setError(errorMessage);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -60,22 +54,12 @@ export default function UsersAnalyticsPage() {
   return (
     <MainLayout>
       <div className="space-y-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="h-8 w-8 text-[#0B214A]" />
-              <h1 className="text-3xl font-bold text-gray-900">User Analytics</h1>
-            </div>
-            <p className="text-gray-600">User engagement and activity metrics</p>
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Users className="h-8 w-8 text-[#0B214A]" />
+            <h1 className="text-3xl font-bold text-gray-900">User Analytics</h1>
           </div>
-          <button
-            onClick={() => fetchUsers(true)}
-            disabled={refreshing || loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <p className="text-gray-600">User engagement and activity metrics</p>
         </div>
 
         {error && (

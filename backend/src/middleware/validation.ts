@@ -17,6 +17,12 @@ export function validateBody(schema: z.ZodSchema) {
           message: err.message,
         }));
 
+        // Log validation errors for debugging (especially for analytics)
+        if (req.path.includes('/analytics/event')) {
+          console.error('[Analytics Validation] Request body:', JSON.stringify(req.body, null, 2));
+          console.error('[Analytics Validation] Validation errors:', errors);
+        }
+
         return res.status(400).json({
           success: false,
           error: 'Validation failed',

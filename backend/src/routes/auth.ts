@@ -5,7 +5,7 @@ import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshTokenSchema, changePasswordSchema, updateProfileSchema, forgotPasswordSchema, resetPasswordSchema } from '../schemas/auth';
 import { rateLimitForgotPassword } from '../middleware/rateLimit';
 
-export const authRouter = Router();
+export const authRouter: Router = Router();
 
 // Public registration disabled - only admins can create users via /api/admin/users/create
 // authRouter.post('/register', validateBody(registerSchema), authController.register);

@@ -13,35 +13,61 @@ interface WatchHistoryItem {
   lastWatched: Date;
   progress: number;
   duration: number;
+  isLesson?: boolean;
+  lessonId?: string;
 }
 
 export default function WatchHistoryPage() {
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchWatchHistory() {
-      try {
-        setLoading(true);
-        const data = await videoApi.getWatchHistory();
-        setHistory(data.map(item => ({
-          videoId: item.videoId,
-          videoTitle: item.videoTitle,
-          thumbnailUrl: item.thumbnailUrl || undefined,
-          lastWatched: new Date(item.lastWatched),
-          progress: item.progress,
-          duration: item.duration,
-        })));
-      } catch (error) {
-        console.error('Failed to fetch watch history:', error);
-        // On error, set empty history
-        setHistory([]);
-      } finally {
-        setLoading(false);
-      }
+  const fetchWatchHistory = async () => {
+    try {
+      setLoading(true);
+      console.log('[WatchHistory] Fetching watch history...');
+      const data = await videoApi.getWatchHistory();
+      console.log('[WatchHistory] Received data:', data);
+      setHistory(data.map(item => ({
+        videoId: item.videoId,
+        videoTitle: item.videoTitle,
+        thumbnailUrl: item.thumbnailUrl || undefined,
+        lastWatched: new Date(item.lastWatched),
+        progress: item.progress,
+        duration: item.duration,
+        isLesson: (item as any).isLesson || false,
+        lessonId: (item as any).lessonId || undefined,
+      })));
+      console.log('[WatchHistory] Mapped history items:', history.length);
+    } catch (error: any) {
+      console.error('Failed to fetch watch history:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        status: error?.status,
+        data: error?.data,
+      });
+      // On error, set empty history
+      setHistory([]);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchWatchHistory();
+  }, []);
+
+  // Refresh watch history when page becomes visible (user returns from watching)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchWatchHistory();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const formatDate = (date: Date) => {
@@ -101,10 +127,10 @@ export default function WatchHistoryPage() {
             <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">No watch history yet</p>
             <Link
-              href="/my-videos"
+              href="/modules"
               className="inline-block mt-4 text-[#0B214A] hover:underline"
             >
-              Browse Videos
+              Browse Modules
             </Link>
           </div>
         ) : (
@@ -112,7 +138,7 @@ export default function WatchHistoryPage() {
             {history.map((item) => (
               <Link
                 key={item.videoId}
-                href={`/watch/${item.videoId}`}
+                href={item.isLesson ? `/lesson/${item.lessonId || item.videoId}` : `/watch/${item.videoId}`}
                 className="flex gap-4 bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
               >
                 <div className="w-48 h-28 bg-gray-200 rounded-lg flex-shrink-0 relative overflow-hidden">

@@ -1,4 +1,4 @@
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
 # Install FFmpeg
 RUN apk add --no-cache ffmpeg
@@ -10,6 +10,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/types ./packages/types
 COPY worker/package.json ./worker/
+COPY worker/prisma ./worker/prisma
 RUN corepack enable pnpm && pnpm install --frozen-lockfile
 
 # Build
@@ -18,6 +19,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build types package first (required by worker)
+RUN corepack enable pnpm && pnpm --filter @vs-platform/types build
+
+# Generate Prisma client for worker
+RUN cd worker && pnpm prisma generate --schema=./prisma/schema.prisma
+
+# Then build worker
 RUN corepack enable pnpm && pnpm --filter worker build
 
 # Production

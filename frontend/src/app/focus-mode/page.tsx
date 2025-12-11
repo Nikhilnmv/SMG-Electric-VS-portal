@@ -68,10 +68,10 @@ export default function FocusModePage() {
             <Focus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500 mb-4">No videos available for Focus Mode</p>
             <Link
-              href="/upload"
+              href="/modules"
               className="inline-flex items-center gap-2 px-4 py-2 bg-[#0B214A] text-white rounded-lg hover:bg-[#0A1A3A] transition-colors"
             >
-              Upload Video
+              Browse Modules
             </Link>
           </div>
         ) : (

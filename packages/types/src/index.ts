@@ -42,7 +42,7 @@ export interface Video {
   publishedAt?: Date;
 }
 
-export type VideoStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'APPROVED' | 'REJECTED' | 'uploading' | 'processing' | 'review' | 'approved' | 'published' | 'rejected';
+export type VideoStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'APPROVED' | 'REJECTED' | 'uploading' | 'processing' | 'review' | 'approved' | 'published' | 'rejected' | 'failed';
 
 export interface VideoMetadata {
   videoId: string;
@@ -71,6 +71,7 @@ export interface UploadRequest {
 export interface TranscodingJob {
   id: string;
   videoId: string;
+  s3Key?: string;
   status: TranscodingStatus;
   progress: number;
   error?: string;

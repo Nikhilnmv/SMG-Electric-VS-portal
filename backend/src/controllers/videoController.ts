@@ -54,63 +54,6 @@ export const videoController = {
     }
   },
 
-  listByCategory: async (req: AuthRequest, res: Response) => {
-    try {
-      const user = req.user;
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          error: 'Not authenticated',
-        } as ApiResponse<null>);
-      }
-
-      const isAdmin = user.role?.toUpperCase() === 'ADMIN';
-      const enforceCategoryAccess = process.env.ENFORCE_CATEGORY_ACCESS !== 'false';
-
-      // Build where clause
-      // Show APPROVED videos that have HLS path (ready for playback)
-      const where: any = {
-        status: 'APPROVED',
-        hlsPath: {
-          not: null,
-        },
-      };
-
-      // Filter by categoryRole (unless admin)
-      // Admins can see all videos regardless of category
-      // Regular users see all videos from their category (including their own)
-      if (!isAdmin && enforceCategoryAccess && user.categoryRole) {
-        where.categoryRole = user.categoryRole;
-      }
-
-      const videos = await prisma.video.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      res.json({
-        success: true,
-        data: videos,
-      } as ApiResponse<typeof videos>);
-    } catch (error) {
-      console.error('List videos by category error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch videos',
-      } as ApiResponse<null>);
-    }
-  },
-
   myVideos: async (req: AuthRequest, res: Response) => {
     try {
       if (!req.user) {
@@ -362,30 +305,35 @@ export const videoController = {
 
       // Delete files from storage
       const STORAGE_MODE = process.env.STORAGE_MODE || 'local';
+      let storageDeletionSuccess = false;
+      let storageDeletionError: string | null = null;
+
       if (STORAGE_MODE === 'local') {
         const { deleteLocalVideo } = await import('../services/localStorage');
         try {
           await deleteLocalVideo(id);
-          console.log(`[VideoController] Local files deleted for video ${id}`);
-        } catch (error) {
-          console.error(`[VideoController] Error deleting local files:`, error);
-          // Continue with DB deletion even if file deletion fails
+          storageDeletionSuccess = true;
+          console.log(`[VideoController] Local files deleted successfully for video ${id}`);
+        } catch (error: any) {
+          storageDeletionError = error.message || 'Unknown error';
+          console.error(`[VideoController] Error deleting local files for video ${id}:`, error);
+          // Continue with DB deletion even if file deletion fails, but log the error
         }
       } else {
         // S3 deletion
-        const { deleteFromS3, deletePrefixFromS3 } = await import('../services/s3');
+        const { deleteVideoFromS3 } = await import('../services/s3');
         try {
-          // Delete raw file
-          await deleteFromS3(video.s3Key);
-          // Delete HLS files if exists
-          if (video.hlsPath) {
-            const hlsPrefix = video.hlsPath.replace('/master.m3u8', '');
-            await deletePrefixFromS3(hlsPrefix); // Delete all files with this prefix
-          }
-          console.log(`[VideoController] S3 files deleted for video ${id}`);
-        } catch (error) {
-          console.error(`[VideoController] Error deleting S3 files:`, error);
-          // Continue with DB deletion even if file deletion fails
+          await deleteVideoFromS3({
+            s3Key: video.s3Key,
+            hlsPath: video.hlsPath,
+            thumbnailUrl: video.thumbnailUrl,
+          });
+          storageDeletionSuccess = true;
+          console.log(`[VideoController] S3 files deleted successfully for video ${id}`);
+        } catch (error: any) {
+          storageDeletionError = error.message || 'Unknown error';
+          console.error(`[VideoController] Error deleting S3 files for video ${id}:`, error);
+          // Continue with DB deletion even if file deletion fails, but log the error
         }
       }
 
@@ -394,11 +342,19 @@ export const videoController = {
         where: { id },
       });
 
-      console.log(`[VideoController] Video ${id} deleted successfully`);
+      console.log(`[VideoController] Video ${id} deleted successfully from database`);
+
+      // Return response with information about storage deletion
+      const message = storageDeletionSuccess
+        ? 'Video deleted successfully'
+        : `Video deleted from database${storageDeletionError ? `, but some files may not have been removed from storage: ${storageDeletionError}` : ''}`;
 
       res.json({
         success: true,
-        message: 'Video deleted successfully',
+        message,
+        ...(storageDeletionError && {
+          warning: 'Some files may not have been removed from storage. Please check the server logs.',
+        }),
       } as ApiResponse<null>);
     } catch (error) {
       console.error('Delete video error:', error);
@@ -442,6 +398,8 @@ export const videoController = {
 
       const progressValue = Math.floor(progressSeconds);
       
+      console.log(`[UpdateProgress] Creating PROGRESS event for video ${id}, user ${req.user.id}, progress: ${progressValue}`);
+      
       // Create or update progress via AnalyticsEvent
       const progressEvent = await prisma.analyticsEvent.create({
         data: {
@@ -451,6 +409,8 @@ export const videoController = {
           progress: progressValue,
         },
       });
+      
+      console.log(`[UpdateProgress] Created event ${progressEvent.id}`);
 
       // If video is completed (progress >= 95% of duration), also create a COMPLETE event
       if (video.duration && progressValue >= Math.floor(video.duration * 0.95)) {
@@ -501,6 +461,11 @@ export const videoController = {
           eventType: {
             in: ['PROGRESS', 'COMPLETE'],
           },
+          // Only get events that have either a videoId or lessonId (not both null)
+          OR: [
+            { videoId: { not: null } },
+            { lessonId: { not: null } },
+          ],
         },
         orderBy: {
           timestamp: 'desc',
@@ -516,8 +481,30 @@ export const videoController = {
               },
             },
           },
+          lesson: {
+            include: {
+              module: true,
+            },
+          },
         },
       });
+
+      console.log(`[WatchHistory] Found ${allEvents.length} events for user ${req.user.id}`);
+      
+      // Log event details for debugging
+      if (allEvents.length > 0) {
+        console.log(`[WatchHistory] Sample events:`, allEvents.slice(0, 3).map(e => ({
+          id: e.id,
+          eventType: e.eventType,
+          videoId: e.videoId,
+          lessonId: e.lessonId,
+          progress: e.progress,
+          hasVideo: !!e.video,
+          hasLesson: !!e.lesson,
+          videoStatus: e.video?.status,
+          lessonStatus: e.lesson?.status,
+        })));
+      }
 
       // Group by videoId and get the latest progress for each video
       const videoMap = new Map<string, {
@@ -526,70 +513,191 @@ export const videoController = {
         lastWatched: Date;
       }>();
 
-      for (const event of allEvents) {
-        if (!event.video) continue;
-        
-        const videoId = event.video.id;
-        
-        // Only include videos that are approved and have HLS path (ready for playback)
-        if (event.video.status !== 'APPROVED' || !event.video.hlsPath) {
-          continue;
-        }
+      // Group by lessonId and get the latest progress for each lesson
+      const lessonMap = new Map<string, {
+        lesson: typeof allEvents[0]['lesson'];
+        progress: number;
+        lastWatched: Date;
+      }>();
 
-        if (!videoMap.has(videoId)) {
-          // For COMPLETE events, use video duration as progress
-          // For PROGRESS events, use the progress value
-          let progress = 0;
-          if (event.eventType === 'COMPLETE') {
-            progress = event.video.duration || 0;
-          } else {
-            progress = event.progress || 0;
+      for (const event of allEvents) {
+        // Handle video events
+        // If video relation is null but videoId exists, try to fetch the video
+        if (event.videoId && !event.video) {
+          console.log(`[WatchHistory] Event ${event.id} has videoId ${event.videoId} but no video relation, fetching...`);
+          try {
+            const video = await prisma.video.findUnique({
+              where: { id: event.videoId },
+            });
+            if (video) {
+              (event as any).video = video;
+            }
+          } catch (err) {
+            console.error(`[WatchHistory] Failed to fetch video ${event.videoId}:`, err);
+          }
+        }
+        
+        if (event.video) {
+          const videoId = event.video.id;
+          
+          // Include videos that are ready for playback
+          // Check status - allow APPROVED, READY, and PROCESSING (in case they're ready but not approved yet)
+          const validStatuses = ['APPROVED', 'READY', 'PROCESSING'];
+          if (!validStatuses.includes(event.video.status)) {
+            console.log(`[WatchHistory] Skipping video ${videoId} - status: ${event.video.status}`);
+            continue;
+          }
+          
+          // Only require hlsPath for APPROVED and READY videos
+          // PROCESSING videos might not have hlsPath yet, but we can still show them
+          if ((event.video.status === 'APPROVED' || event.video.status === 'READY') && !event.video.hlsPath) {
+            console.log(`[WatchHistory] Skipping video ${videoId} - no hlsPath for ${event.video.status} video`);
+            continue;
           }
 
-          videoMap.set(videoId, {
-            video: event.video,
-            progress,
-            lastWatched: event.timestamp,
-          });
-        } else {
-          // If we already have this video, check if this event is more recent
-          const existing = videoMap.get(videoId)!;
-          if (event.timestamp > existing.lastWatched) {
-            // Update with more recent event
+          if (!videoMap.has(videoId)) {
+            // For COMPLETE events, use video duration as progress
+            // For PROGRESS events, use the progress value (default to 0 if null)
             let progress = 0;
             if (event.eventType === 'COMPLETE') {
               progress = event.video.duration || 0;
             } else {
-              progress = event.progress || 0;
+              progress = event.progress ?? 0;
             }
-            
+
             videoMap.set(videoId, {
               video: event.video,
               progress,
               lastWatched: event.timestamp,
             });
-          } else if (event.eventType === 'COMPLETE' && existing.progress < (event.video.duration || 0)) {
-            // If this is a COMPLETE event and we have a less complete progress, update it
-            videoMap.set(videoId, {
-              video: event.video,
-              progress: event.video.duration || 0,
-              lastWatched: event.timestamp > existing.lastWatched ? event.timestamp : existing.lastWatched,
+          } else {
+            // If we already have this video, check if this event is more recent
+            const existing = videoMap.get(videoId)!;
+            if (event.timestamp > existing.lastWatched) {
+              // Update with more recent event
+              let progress = 0;
+              if (event.eventType === 'COMPLETE') {
+                progress = event.video.duration || 0;
+              } else {
+                progress = event.progress ?? 0;
+              }
+              
+              videoMap.set(videoId, {
+                video: event.video,
+                progress,
+                lastWatched: event.timestamp,
+              });
+            } else if (event.eventType === 'COMPLETE' && existing.progress < (event.video.duration || 0)) {
+              // If this is a COMPLETE event and we have a less complete progress, update it
+              videoMap.set(videoId, {
+                video: event.video,
+                progress: event.video.duration || 0,
+                lastWatched: event.timestamp > existing.lastWatched ? event.timestamp : existing.lastWatched,
+              });
+            }
+          }
+        }
+
+        // Handle lesson events
+        // If lesson relation is null but lessonId exists, try to fetch the lesson
+        if (event.lessonId && !event.lesson) {
+          console.log(`[WatchHistory] Event ${event.id} has lessonId ${event.lessonId} but no lesson relation, fetching...`);
+          try {
+            const lesson = await prisma.lesson.findUnique({
+              where: { id: event.lessonId },
+              include: { module: true },
             });
+            if (lesson) {
+              (event as any).lesson = lesson;
+            }
+          } catch (err) {
+            console.error(`[WatchHistory] Failed to fetch lesson ${event.lessonId}:`, err);
+          }
+        }
+        
+        if (event.lesson) {
+          const lessonId = event.lesson.id;
+          
+          // Only include lessons that are ready for playback
+          if (event.lesson.status !== 'READY' || !event.lesson.hlsMaster) {
+            continue;
+          }
+
+          if (!lessonMap.has(lessonId)) {
+            // For COMPLETE events, use lesson duration as progress
+            // For PROGRESS events, use the progress value
+            let progress = 0;
+            if (event.eventType === 'COMPLETE') {
+              progress = event.lesson.duration || 0;
+            } else {
+              progress = event.progress || 0;
+            }
+
+            lessonMap.set(lessonId, {
+              lesson: event.lesson,
+              progress,
+              lastWatched: event.timestamp,
+            });
+          } else {
+            // If we already have this lesson, check if this event is more recent
+            const existing = lessonMap.get(lessonId)!;
+            if (event.timestamp > existing.lastWatched) {
+              // Update with more recent event
+              let progress = 0;
+              if (event.eventType === 'COMPLETE') {
+                progress = event.lesson.duration || 0;
+              } else {
+                progress = event.progress || 0;
+              }
+              
+              lessonMap.set(lessonId, {
+                lesson: event.lesson,
+                progress,
+                lastWatched: event.timestamp,
+              });
+            } else if (event.eventType === 'COMPLETE' && existing.progress < (event.lesson.duration || 0)) {
+              // If this is a COMPLETE event and we have a less complete progress, update it
+              lessonMap.set(lessonId, {
+                lesson: event.lesson,
+                progress: event.lesson.duration || 0,
+                lastWatched: event.timestamp > existing.lastWatched ? event.timestamp : existing.lastWatched,
+              });
+            }
           }
         }
       }
 
-      // Convert map to array and sort by lastWatched (most recent first)
-      const watchHistory = Array.from(videoMap.values())
-        .sort((a, b) => b.lastWatched.getTime() - a.lastWatched.getTime())
+      // Convert video map to array
+      const videoHistory = Array.from(videoMap.values())
+        .filter(item => item.video !== null)
         .map(item => ({
-          videoId: item.video.id,
-          videoTitle: item.video.title,
-          thumbnailUrl: item.video.thumbnailUrl,
+          videoId: item.video!.id,
+          videoTitle: item.video!.title,
+          thumbnailUrl: item.video!.thumbnailUrl,
           progress: item.progress,
-          duration: item.video.duration || 0,
+          duration: item.video!.duration || 0,
           lastWatched: item.lastWatched,
         }));
+
+      // Convert lesson map to array
+      const lessonHistory = Array.from(lessonMap.values())
+        .filter(item => item.lesson !== null)
+        .map(item => ({
+          videoId: item.lesson!.id, // Using videoId field for compatibility with frontend
+          videoTitle: item.lesson!.title,
+          thumbnailUrl: item.lesson!.thumbnailUrl,
+          progress: item.progress,
+          duration: item.lesson!.duration || 0,
+          lastWatched: item.lastWatched,
+          isLesson: true, // Flag to indicate this is a lesson
+          lessonId: item.lesson!.id,
+        }));
+
+      // Combine and sort by lastWatched (most recent first)
+      const watchHistory = [...videoHistory, ...lessonHistory]
+        .sort((a, b) => b.lastWatched.getTime() - a.lastWatched.getTime());
+
+      console.log(`[WatchHistory] Returning ${watchHistory.length} items (${videoHistory.length} videos, ${lessonHistory.length} lessons)`);
 
       res.json({
         success: true,

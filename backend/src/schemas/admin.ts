@@ -53,27 +53,6 @@ export const createRoleSchema = z.object({
 });
 
 /**
- * Validation schema for video approval/rejection
- */
-export const approveVideoSchema = z.object({
-  notes: z
-    .string()
-    .max(1000, 'Notes are too long')
-    .optional(),
-});
-
-export const rejectVideoSchema = z.object({
-  reason: z
-    .string()
-    .min(1, 'Rejection reason is required')
-    .max(1000, 'Reason is too long'),
-  notes: z
-    .string()
-    .max(1000, 'Notes are too long')
-    .optional(),
-});
-
-/**
  * Validation schema for admin creating a new user
  */
 export const createUserSchema = z.object({

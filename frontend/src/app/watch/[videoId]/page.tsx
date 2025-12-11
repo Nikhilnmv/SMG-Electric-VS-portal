@@ -146,7 +146,7 @@ export default function WatchPage({ params }: { params: { videoId: string } }) {
   // Handle progress updates with debounce
   const handleProgressUpdate = useCallback(
     (secondsWatched: number) => {
-      if (!videoData || !isActive) return;
+      if (!videoData) return;
 
       // Debounce progress updates
       if (progressDebounceRef.current) {
@@ -161,7 +161,7 @@ export default function WatchPage({ params }: { params: { videoId: string } }) {
         }
       }, 2000); // 2 second debounce
     },
-    [params.videoId, videoData, isActive]
+    [params.videoId, videoData]
   );
 
   // Handle video end - log focus session completion
@@ -179,7 +179,7 @@ export default function WatchPage({ params }: { params: { videoId: string } }) {
         });
         await analyticsApi.trackEvent(
           params.videoId,
-          'COMPLETE',
+          'VIDEO_COMPLETE',
           videoData.video.duration || undefined,
           `${deviceInfo} | ${metadata}`
         );
@@ -202,7 +202,7 @@ export default function WatchPage({ params }: { params: { videoId: string } }) {
       try {
         await analyticsApi.trackEvent(
           params.videoId,
-          'COMPLETE',
+          'VIDEO_COMPLETE',
           videoData.video.duration || undefined
         );
       } catch (err) {

@@ -1,18 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import AuthLayout from '@/components/layout/AuthLayout';
 import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if redirected after password change
+    if (searchParams.get('passwordChanged') === 'true') {
+      setSuccess('Password changed successfully! Please log in with your new password.');
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,11 +57,15 @@ export default function LoginPage() {
         const tokenKey = process.env.NEXT_PUBLIC_JWT_STORAGE_KEY || 'vs_platform_token';
         localStorage.setItem(tokenKey, data.data.token);
         
+        // Small delay to ensure token is stored before redirect
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         // Check if password must be changed
         if (data.data.user?.passwordMustChange) {
-          router.push('/profile/change-password');
+          router.replace('/profile/change-password');
         } else {
-          router.push('/');
+          // Redirect directly to dashboard to avoid double redirect
+          router.replace('/dashboard');
         }
       } else {
         throw new Error(data.error || 'Login failed - invalid response');
@@ -71,6 +84,11 @@ export default function LoginPage() {
 
   return (
     <AuthLayout subtitle="Login with username">
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6 text-sm">
+          {success}
+        </div>
+      )}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6 text-sm">
           {error}

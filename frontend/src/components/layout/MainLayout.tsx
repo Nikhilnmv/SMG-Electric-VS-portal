@@ -5,8 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard,
-  Upload,
-  Video,
   History,
   Focus,
   BarChart3,
@@ -15,13 +13,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronLeft,
   Users,
-  FileVideo,
-  ChevronDown,
-  ChevronRight,
-  Film,
-  UserPlus,
+  BookOpen,
 } from 'lucide-react';
 import { isAuthenticated, isAdmin, logout as authLogout } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
@@ -35,13 +28,19 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Upload Video', href: '/upload', icon: Upload },
-  { label: 'My Videos', href: '/my-videos', icon: Video },
-  { label: 'Category Videos', href: '/videos', icon: Film },
+  { label: 'Modules', href: '/modules', icon: BookOpen },
   { label: 'Watch History', href: '/watch-history', icon: History },
   { label: 'Focus Mode', href: '/focus-mode', icon: Focus },
-  { label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { label: 'Admin Panel', href: '/admin', icon: Shield, adminOnly: true },
+  { label: 'Profile', href: '/profile', icon: User },
+];
+
+// Admin navigation items
+const adminNavItems: NavItem[] = [
+  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { label: 'User Management', href: '/admin/users', icon: Users },
+  { label: 'Modules & Lessons', href: '/admin/modules', icon: BookOpen },
+  { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
   { label: 'Profile', href: '/profile', icon: User },
 ];
 
@@ -50,11 +49,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const { isAdmin: userIsAdmin } = useAuth();
-
-  // Check if we're on an admin page
-  const isAdminPage = pathname?.startsWith('/admin');
 
   useEffect(() => {
     setMounted(true);
@@ -69,34 +64,20 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     setSidebarOpen(false);
   }, [pathname]);
 
-  // Auto-expand admin menu if on admin page
-  useEffect(() => {
-    if (isAdminPage) {
-      setAdminMenuOpen(true);
-    }
-  }, [isAdminPage]);
-
   const handleLogout = () => {
     authLogout();
     router.push('/login');
   };
   
-  // Filter nav items based on user role
-  const visibleNavItems = navItems.filter((item) => {
-    if (item.adminOnly && !userIsAdmin) {
-      return false;
-    }
-    return true;
-  });
-
-  // Admin sub-menu items
-  const adminSubItems = [
-    { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-    { label: 'User Management', href: '/admin/users', icon: Users },
-    { label: 'Create User', href: '/admin/users/create', icon: UserPlus },
-    { label: 'Video Moderation', href: '/admin/videos', icon: FileVideo },
-    { label: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
-  ];
+  // For admin users, show admin navigation items; for regular users, show regular nav items
+  const visibleNavItems = userIsAdmin 
+    ? adminNavItems 
+    : navItems.filter((item) => {
+        if (item.adminOnly) {
+          return false;
+        }
+        return true;
+      });
 
   if (!mounted) {
     return (
@@ -121,7 +102,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
               <Link href="/dashboard" className="flex items-center">
-              <h1 className="font-serif text-[56px] font-bold text-[#0A1A3A] mb-3 tracking-tight">SMG</h1>
+                <h1 className="font-serif text-4xl lg:text-5xl font-extrabold text-[#0A1A3A] tracking-tight uppercase leading-none">SMG</h1>
               </Link>
             </div>
           </div>
@@ -135,56 +116,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <nav className="flex-1 px-4 py-6 space-y-2">
               {visibleNavItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + '/'));
-                const isAdminItem = item.href === '/admin';
-                
-                if (isAdminItem && userIsAdmin) {
-                  // Render admin menu with sub-items
-                  return (
-                    <div key={item.href}>
-                      <button
-                        onClick={() => setAdminMenuOpen(!adminMenuOpen)}
-                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                          isAdminPage
-                            ? 'bg-white/10 text-white'
-                            : 'text-white/80 hover:bg-white/5 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Icon className="h-5 w-5" />
-                          <span className="font-medium">{item.label}</span>
-                        </div>
-                        {adminMenuOpen ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
-                      {adminMenuOpen && (
-                        <div className="ml-4 mt-2 space-y-1">
-                          {adminSubItems.map((subItem) => {
-                            const SubIcon = subItem.icon;
-                            const isSubActive = pathname === subItem.href || pathname?.startsWith(subItem.href + '/');
-                            return (
-                              <Link
-                                key={subItem.href}
-                                href={subItem.href}
-                                className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
-                                  isSubActive
-                                    ? 'bg-white/10 text-white'
-                                    : 'text-white/60 hover:bg-white/5 hover:text-white/80'
-                                }`}
-                              >
-                                <SubIcon className="h-4 w-4" />
-                                <span className="text-sm font-medium">{subItem.label}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+                const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
                 
                 return (
                   <Link
@@ -233,56 +165,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               <nav className="flex-1 px-4 py-6 space-y-2">
                 {visibleNavItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href || (item.href !== '/admin' && item.href !== '/' && pathname?.startsWith(item.href));
-                  const isAdminItem = item.href === '/admin';
-                  
-                  if (isAdminItem && userIsAdmin) {
-                    return (
-                      <div key={item.href}>
-                        <button
-                          onClick={() => setAdminMenuOpen(!adminMenuOpen)}
-                          className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
-                            isAdminPage
-                              ? 'bg-white/10 text-white'
-                              : 'text-white/80 hover:bg-white/5 hover:text-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Icon className="h-5 w-5" />
-                            <span className="font-medium">{item.label}</span>
-                          </div>
-                          {adminMenuOpen ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                        {adminMenuOpen && (
-                          <div className="ml-4 mt-2 space-y-1">
-                            {adminSubItems.map((subItem) => {
-                              const SubIcon = subItem.icon;
-                              const isSubActive = pathname === subItem.href || pathname?.startsWith(subItem.href + '/');
-                              return (
-                                <Link
-                                  key={subItem.href}
-                                  href={subItem.href}
-                                  onClick={() => setSidebarOpen(false)}
-                                  className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
-                                    isSubActive
-                                      ? 'bg-white/10 text-white'
-                                      : 'text-white/60 hover:bg-white/5 hover:text-white/80'
-                                  }`}
-                                >
-                                  <SubIcon className="h-4 w-4" />
-                                  <span className="text-sm font-medium">{subItem.label}</span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
+                  const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
                   
                   return (
                     <Link

@@ -1,6 +1,6 @@
-import { createClient } from 'redis';
+import { createClient, type RedisClientType } from 'redis';
 
-// Placeholder Redis client - will be implemented
+// Placeholder Redis client - will be implemented  
 export const redisClient = createClient({
   url: process.env.REDIS_URL || 'redis://localhost:6379',
 });

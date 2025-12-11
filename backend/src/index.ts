@@ -11,6 +11,8 @@ import { uploadRouter } from './routes/upload';
 import { analyticsRouter } from './routes/analytics';
 import { adminRouter } from './routes/admin';
 import { liveRouter } from './routes/live';
+import { moduleRouter } from './routes/modules';
+import { lessonRouter } from './routes/lessons';
 
 dotenv.config();
 
@@ -100,6 +102,8 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/live', liveRouter);
+app.use('/api/modules', moduleRouter);
+app.use('/api/lessons', lessonRouter);
 
 // Error handling
 app.use(errorHandler);

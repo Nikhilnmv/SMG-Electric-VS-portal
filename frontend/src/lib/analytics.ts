@@ -18,8 +18,8 @@ export type EventType =
   | 'VIDEO_EXITED';
 
 export interface AnalyticsEvent {
-  userId: string;
-  videoId: string;
+  videoId?: string | null;
+  lessonId?: string | null;
   timestamp?: string;
   eventType: EventType;
   currentTime?: number;
@@ -112,10 +112,23 @@ class AnalyticsTracker {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Try to get error details from response
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.details) {
+            errorMessage += ` - ${JSON.stringify(errorData.details)}`;
+          } else if (errorData.error) {
+            errorMessage += ` - ${errorData.error}`;
+          }
+        } catch (e) {
+          // Ignore JSON parse errors
+        }
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.warn(`Analytics event send failed (attempt ${retries + 1}):`, error);
+      console.warn('Event data:', JSON.stringify(event, null, 2));
       
       if (retries < MAX_RETRIES) {
         // Exponential backoff
@@ -230,7 +243,7 @@ class AnalyticsTracker {
     this.sendBatch(eventsToSend);
   }
 
-  track(event: Omit<AnalyticsEvent, 'userId' | 'sessionId' | 'device'>) {
+  track(event: Omit<AnalyticsEvent, 'sessionId' | 'device'>) {
     if (!this.userId) {
       this.loadUserInfo();
       if (!this.userId) {
@@ -239,9 +252,15 @@ class AnalyticsTracker {
       }
     }
 
+    // Validate that at least one ID is present (required by backend)
+    if (!event.videoId && !event.lessonId) {
+      console.warn('Cannot track event: either videoId or lessonId is required', event);
+      return;
+    }
+
+    // Don't send userId - backend gets it from JWT token
     const fullEvent: AnalyticsEvent = {
       ...event,
-      userId: this.userId,
       sessionId: this.sessionId,
       device: this.getDeviceInfo(),
       timestamp: new Date().toISOString(),

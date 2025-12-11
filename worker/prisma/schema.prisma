@@ -3,7 +3,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -40,6 +39,12 @@ enum EventType {
   COMPLETE
 }
 
+enum LessonStatus {
+  UPLOADED
+  PROCESSING
+  READY
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -50,10 +55,14 @@ model User {
   createdAt    DateTime     @default(now())
   videos       Video[]
   events       AnalyticsEvent[]
+  createdModules Module[]
+  lessonProgress UserLessonProgress[]
 
   @@map("users")
 }
 
+// DEPRECATED: Video model kept for backward compatibility
+// New content should use Module/Lesson structure
 model Video {
   id          String       @id @default(cuid())
   userId      String
@@ -84,16 +93,78 @@ model Rendition {
   @@map("renditions")
 }
 
+model Module {
+  id              String            @id @default(cuid())
+  title           String
+  description     String?
+  allowedCategories String[]        @default([])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  createdById     String
+  createdBy       User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  lessons         Lesson[]
+
+  @@index([createdById])
+  @@index([allowedCategories])
+  @@map("modules")
+}
+
+model Lesson {
+  id          String        @id @default(cuid())
+  moduleId    String
+  title       String
+  description String?
+  videoPath   String?       // folder path for HLS output
+  hlsMaster   String?       // master.m3u8 path
+  status      LessonStatus  @default(UPLOADED)
+  duration    Int?
+  thumbnailUrl String?
+  order       Int           @default(0) // Order within module
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  module      Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  events      AnalyticsEvent[]
+  progress    UserLessonProgress[]
+
+  @@index([moduleId])
+  @@index([order])
+  @@map("lessons")
+}
+
+model UserLessonProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  lessonId    String
+  completed   Boolean   @default(false)
+  progress    Int       @default(0) // 0-100 percentage
+  lastWatchedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson      Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+  @@map("user_lesson_progress")
+}
+
 model AnalyticsEvent {
   id         String    @id @default(cuid())
-  videoId    String
+  videoId    String?   // Keep for backward compatibility with old videos
+  lessonId   String?   // New: reference to lesson
   userId     String?
   eventType  EventType
   progress   Int?
   timestamp  DateTime  @default(now())
   deviceInfo String?
-  video      Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  video      Video?    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  lesson     Lesson?   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([lessonId])
+  @@index([videoId])
+  @@index([userId])
+  @@index([timestamp])
   @@map("analytics_events")
 }

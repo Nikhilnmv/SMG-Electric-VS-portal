@@ -55,4 +55,29 @@ export async function getVideoCategoryRole(videoId: string): Promise<string | nu
   return video?.categoryRole || null;
 }
 
+export async function updateLessonStatus(
+  lessonId: string,
+  status: 'PROCESSING' | 'READY' | 'UPLOADED',
+  hlsMaster?: string
+) {
+  console.log(`[Database] Updating lesson ${lessonId}: status=${status}, hlsMaster=${hlsMaster || 'N/A'}`);
+
+  const updateData: any = {
+    status,
+  };
+
+  if (hlsMaster) {
+    updateData.hlsMaster = hlsMaster;
+  }
+
+  const updated = await prisma.lesson.update({
+    where: { id: lessonId },
+    data: updateData,
+  });
+
+  console.log(`[Database] Lesson updated: id=${updated.id}, status=${updated.status}, hlsMaster=${updated.hlsMaster || 'N/A'}`);
+
+  return updated;
+}
+
 export { prisma };

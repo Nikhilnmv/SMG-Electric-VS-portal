@@ -57,14 +57,6 @@ export const videoApi = {
     const response = await apiRequest<{ success: boolean; data: any[] }>('/api/videos');
     return response.data;
   },
-  listVideosByCategory: async () => {
-    const response = await apiRequest<{ success: boolean; data: any[] }>('/api/videos/category');
-    return response.data;
-  },
-  myVideos: async () => {
-    const response = await apiRequest<{ success: boolean; data: any[] }>('/api/videos/my-videos');
-    return response.data;
-  },
   updateProgress: async (videoId: string, progressSeconds: number) => {
     const response = await apiRequest<{ success: boolean; data: { progressSeconds: number } }>(`/api/videos/${videoId}/progress`, {
       method: 'POST',
@@ -93,15 +85,28 @@ export const videoApi = {
 
 // Analytics API functions
 export const analyticsApi = {
-  trackEvent: async (videoId: string, eventType: string, progressSeconds?: number, deviceInfo?: string) => {
+  trackEvent: async (
+    videoIdOrLessonId: string, 
+    eventType: string, 
+    progressSeconds?: number, 
+    deviceInfo?: string,
+    isLesson: boolean = false
+  ) => {
+    const body: any = {
+      eventType,
+      currentTime: progressSeconds,
+      device: deviceInfo,
+    };
+    
+    if (isLesson) {
+      body.lessonId = videoIdOrLessonId;
+    } else {
+      body.videoId = videoIdOrLessonId;
+    }
+    
     const response = await apiRequest<{ success: boolean }>('/api/analytics/event', {
       method: 'POST',
-      body: JSON.stringify({
-        videoId,
-        eventType,
-        progressSeconds,
-        deviceInfo,
-      }),
+      body: JSON.stringify(body),
     });
     return response;
   },
@@ -132,19 +137,10 @@ export const analyticsApi = {
 };
 
 // Admin API functions
-export interface PendingVideo {
-  id: string;
-  title: string;
-  userId: string;
-  uploadDate: string;
-  status: string;
-  hlsPath: string | null;
-  userEmail: string;
-}
-
 export interface AdminUser {
   id: string;
   email: string;
+  username?: string | null;
   role: string;
   categoryRole?: string;
   createdAt: string;
@@ -158,26 +154,6 @@ export interface AdminStats {
 }
 
 export const adminApi = {
-  getPendingVideos: async () => {
-    const response = await apiRequest<{ success: boolean; data: PendingVideo[] }>('/api/admin/videos/pending');
-    return response.data;
-  },
-
-  approveVideo: async (videoId: string) => {
-    const response = await apiRequest<{ success: boolean; data: any; message?: string }>(`/api/admin/videos/${videoId}/approve`, {
-      method: 'POST',
-    });
-    return response;
-  },
-
-  rejectVideo: async (videoId: string, deleteFromStorage = false) => {
-    const response = await apiRequest<{ success: boolean; data: any; message?: string; warning?: string }>(`/api/admin/videos/${videoId}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ deleteFromStorage }),
-    });
-    return response;
-  },
-
   getUsers: async () => {
     const response = await apiRequest<{ success: boolean; data: AdminUser[] }>('/api/admin/users');
     return response.data;
@@ -227,6 +203,25 @@ export const adminApi = {
     });
     return response;
   },
+
+  sendUserCredentialsEmail: async (userId: string) => {
+    const response = await apiRequest<{ success: boolean; message?: string }>(`/api/admin/users/${userId}/send-credentials`, {
+      method: 'POST',
+    });
+    return response;
+  },
+
+  getUserInitialPassword: async (userId: string) => {
+    const response = await apiRequest<{ success: boolean; data: { initialPassword: string; createdAt: Date } }>(`/api/admin/users/${userId}/initial-password`);
+    return response.data;
+  },
+
+  deleteUser: async (userId: string) => {
+    const response = await apiRequest<{ success: boolean; message?: string }>(`/api/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+    return response;
+  },
 };
 
 // Profile API functions
@@ -256,6 +251,148 @@ export const profileApi = {
     const response = await apiRequest<{ success: boolean; message?: string }>('/api/auth/profile', {
       method: 'DELETE',
       body: JSON.stringify({ password }),
+    });
+    return response;
+  },
+};
+
+// Module API functions
+export interface Module {
+  id: string;
+  title: string;
+  description?: string | null;
+  allowedCategories: string[];
+  createdAt: string;
+  updatedAt: string;
+  lessons?: Lesson[];
+  userProgress?: {
+    completedLessons: number;
+    totalLessons: number;
+    progressPercentage: number;
+  };
+}
+
+export interface Lesson {
+  id: string;
+  moduleId: string;
+  title: string;
+  description?: string | null;
+  order: number;
+  status: 'UPLOADED' | 'PROCESSING' | 'READY';
+  hlsMaster?: string | null;
+  duration?: number | null;
+  thumbnailUrl?: string | null;
+  userProgress?: {
+    completed: boolean;
+    progress: number;
+    lastWatchedAt?: string | null;
+  };
+}
+
+export const moduleApi = {
+  listModules: async () => {
+    const response = await apiRequest<{ success: boolean; data: Module[] }>('/api/modules');
+    return response.data;
+  },
+
+  getModule: async (id: string) => {
+    const response = await apiRequest<{ success: boolean; data: Module }>(`/api/modules/${id}`);
+    return response.data;
+  },
+
+  // Admin functions
+  createModule: async (payload: { title: string; description?: string; allowedCategories?: string[] }) => {
+    const response = await apiRequest<{ success: boolean; data: Module }>('/api/admin/modules', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return response.data;
+  },
+
+  listAllModules: async () => {
+    const response = await apiRequest<{ success: boolean; data: Module[] }>('/api/admin/modules');
+    return response.data;
+  },
+
+  getModuleAdmin: async (id: string) => {
+    const response = await apiRequest<{ success: boolean; data: Module }>(`/api/admin/modules/${id}`);
+    return response.data;
+  },
+
+  updateModule: async (id: string, payload: { title?: string; description?: string | null; allowedCategories?: string[] }) => {
+    const response = await apiRequest<{ success: boolean; data: Module }>(`/api/admin/modules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return response.data;
+  },
+
+  deleteModule: async (id: string) => {
+    const response = await apiRequest<{ success: boolean }>(`/api/admin/modules/${id}`, {
+      method: 'DELETE',
+    });
+    return response;
+  },
+};
+
+export const lessonApi = {
+  getLesson: async (id: string) => {
+    const response = await apiRequest<{ success: boolean; data: Lesson }>(`/api/lessons/${id}`);
+    return response.data;
+  },
+
+  getStreamUrl: async (id: string) => {
+    const response = await apiRequest<{ success: boolean; data: { hlsUrl: string; lessonId: string; title: string } }>(`/api/lessons/${id}/stream`);
+    return response.data;
+  },
+
+  updateProgress: async (id: string, payload: { progress?: number; completed?: boolean }) => {
+    const response = await apiRequest<{ success: boolean; data: any }>(`/api/lessons/${id}/progress`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return response.data;
+  },
+
+  // Admin functions
+  createLesson: async (moduleId: string, payload: { title: string; description?: string; order?: number }) => {
+    const response = await apiRequest<{ success: boolean; data: Lesson }>(`/api/admin/modules/${moduleId}/lessons`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return response.data;
+  },
+
+  uploadLessonVideo: async (lessonId: string, formData: FormData) => {
+    const token = getAuthToken();
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const response = await fetch(`${API_URL}/api/admin/lessons/${lessonId}/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Upload failed');
+    }
+
+    return response.json();
+  },
+
+  updateLesson: async (lessonId: string, payload: { title?: string; description?: string | null; order?: number }) => {
+    const response = await apiRequest<{ success: boolean; data: Lesson }>(`/api/admin/lessons/${lessonId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    return response.data;
+  },
+
+  deleteLesson: async (lessonId: string) => {
+    const response = await apiRequest<{ success: boolean }>(`/api/admin/lessons/${lessonId}`, {
+      method: 'DELETE',
     });
     return response;
   },

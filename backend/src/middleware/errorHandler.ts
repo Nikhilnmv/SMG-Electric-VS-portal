@@ -35,7 +35,7 @@ export function errorHandler(
     if (statusCode >= 500) {
       console.error('[Error Handler] Server error:', {
         message: err.message,
-        stack: err.stack,
+        stack: err instanceof Error ? err.stack : undefined,
         code: 'code' in err ? err.code : undefined,
         details: 'details' in err ? err.details : undefined,
         path: req.path,

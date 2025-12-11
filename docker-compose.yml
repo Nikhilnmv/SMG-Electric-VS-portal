@@ -41,14 +41,15 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     environment:
-      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ''
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
+      test: ['CMD', 'clickhouse-client', '--query', 'SELECT 1']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Backend API
   backend:

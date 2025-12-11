@@ -1,4 +1,4 @@
-FROM node:18-alpine AS base
+FROM node:20-alpine AS base
 
 # Install dependencies
 FROM base AS deps
@@ -7,6 +7,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/types ./packages/types
 COPY backend/package.json ./backend/
+COPY backend/prisma ./backend/prisma
 RUN corepack enable pnpm && pnpm install --frozen-lockfile
 
 # Build
@@ -15,6 +16,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build types package first (required by backend)
+RUN corepack enable pnpm && pnpm --filter @vs-platform/types build
+
+# Then build backend
 RUN corepack enable pnpm && pnpm --filter backend build
 
 # Production

@@ -9,8 +9,8 @@ import { EmailService } from '../services/email.service';
 import { AuditService } from '../services/auditService';
 import { env } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_SECRET: string = process.env.JWT_SECRET || 'dev-secret-key-change-in-production';
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || '7d';
 
 const VALID_CATEGORY_ROLES: CategoryRole[] = ['DEALER', 'EMPLOYEE', 'TECHNICIAN', 'STAKEHOLDER', 'INTERN', 'VENDOR'];
 
@@ -87,17 +87,14 @@ export const authController = {
       }
 
       // Generate JWT token
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          categoryRole: user.categoryRole,
-          tokenVersion: user.tokenVersion,
-        } as JWTPayload,
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
-      );
+      const payload: JWTPayload = {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        categoryRole: user.categoryRole,
+        tokenVersion: user.tokenVersion,
+      };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
 
       res.status(201).json({
         success: true,
@@ -165,18 +162,15 @@ export const authController = {
       }
 
       // Generate JWT token
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username || undefined,
-          role: user.role,
-          categoryRole: user.categoryRole,
-          tokenVersion: user.tokenVersion,
-        } as JWTPayload,
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRES_IN }
-      );
+      const payload: JWTPayload = {
+        id: user.id,
+        email: user.email,
+        username: user.username || undefined,
+        role: user.role,
+        categoryRole: user.categoryRole,
+        tokenVersion: user.tokenVersion,
+      };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
 
       res.json({
         success: true,

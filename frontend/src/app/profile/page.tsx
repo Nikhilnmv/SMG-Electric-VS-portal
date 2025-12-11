@@ -2,7 +2,7 @@
 
 import MainLayout from '@/components/layout/MainLayout';
 import { useEffect, useState } from 'react';
-import { User, Mail, Shield, Calendar, Edit, Lock, Bell, Trash2, X } from 'lucide-react';
+import { User, Mail, Shield, Calendar, Lock, Bell, X } from 'lucide-react';
 import { getCurrentUser, isAdmin, logout } from '@/lib/auth';
 import { profileApi } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -11,9 +11,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -36,6 +34,7 @@ export default function ProfilePage() {
       if (currentUser) {
         setUser({
           email: currentUser.email,
+          username: currentUser.username,
           role: currentUser.role,
           categoryRole: currentUser.categoryRole,
           id: currentUser.id,
@@ -43,22 +42,6 @@ export default function ProfilePage() {
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleEditProfile = async (email: string) => {
-    try {
-      setError(null);
-      const response = await profileApi.updateProfile(email);
-      if (response.success) {
-        setSuccess('Profile updated successfully');
-        setShowEditModal(false);
-        await fetchProfile();
-        // Update JWT token if needed (would require re-login in production)
-        setTimeout(() => setSuccess(null), 3000);
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update profile');
     }
   };
 
@@ -79,21 +62,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleDeleteAccount = async (password: string) => {
-    try {
-      setError(null);
-      const response = await profileApi.deleteAccount(password);
-      if (response.success) {
-        setSuccess('Account deleted successfully');
-        setTimeout(() => {
-          logout();
-          router.push('/login');
-        }, 2000);
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to delete account');
-    }
-  };
 
   return (
     <MainLayout>
@@ -134,7 +102,7 @@ export default function ProfilePage() {
                 <User className="h-10 w-10 text-white" />
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-gray-900">{user.email}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">{user.username || user.email}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="px-2 py-1 text-xs font-semibold bg-purple-100 text-purple-700 rounded capitalize">
                     {user.role?.toLowerCase() || 'user'}
@@ -147,13 +115,6 @@ export default function ProfilePage() {
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => setShowEditModal(true)}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <Edit className="h-4 w-4" />
-                Edit
-              </button>
             </div>
 
             {/* Profile Details */}
@@ -218,13 +179,6 @@ export default function ProfilePage() {
                   <Bell className="h-4 w-4" />
                   Notification Settings
                 </button>
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="w-full text-left px-4 py-3 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete Account
-                </button>
               </div>
             </div>
           </div>
@@ -235,19 +189,6 @@ export default function ProfilePage() {
           </div>
         )}
       </div>
-
-      {/* Edit Profile Modal */}
-      {showEditModal && (
-        <EditProfileModal
-          user={user}
-          onClose={() => {
-            setShowEditModal(false);
-            setError(null);
-          }}
-          onSave={handleEditProfile}
-          error={error}
-        />
-      )}
 
       {/* Change Password Modal */}
       {showPasswordModal && (
@@ -261,18 +202,6 @@ export default function ProfilePage() {
         />
       )}
 
-      {/* Delete Account Modal */}
-      {showDeleteModal && (
-        <DeleteAccountModal
-          onClose={() => {
-            setShowDeleteModal(false);
-            setError(null);
-          }}
-          onConfirm={handleDeleteAccount}
-          error={error}
-        />
-      )}
-
       {/* Notification Settings Modal */}
       {showNotificationsModal && (
         <NotificationSettingsModal
@@ -280,74 +209,6 @@ export default function ProfilePage() {
         />
       )}
     </MainLayout>
-  );
-}
-
-// Edit Profile Modal Component
-function EditProfileModal({ user, onClose, onSave, error }: any) {
-  const [email, setEmail] = useState(user?.email || '');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) {
-      return;
-    }
-    setLoading(true);
-    await onSave(email.trim());
-    setLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900">Edit Profile</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B214A]"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-4 py-2 bg-[#0B214A] text-white rounded-lg hover:bg-[#1a3d6b] transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
   );
 }
 
@@ -453,94 +314,6 @@ function ChangePasswordModal({ onClose, onSave, error }: any) {
               className="flex-1 px-4 py-2 bg-[#0B214A] text-white rounded-lg hover:bg-[#1a3d6b] transition-colors disabled:opacity-50"
             >
               {loading ? 'Changing...' : 'Change Password'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// Delete Account Modal Component
-function DeleteAccountModal({ onClose, onConfirm, error }: any) {
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [confirmText, setConfirmText] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (confirmText !== 'DELETE') {
-      return;
-    }
-    if (!password) {
-      return;
-    }
-    setLoading(true);
-    await onConfirm(password);
-    setLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-red-600">Delete Account</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="mb-4">
-          <p className="text-gray-700 mb-4">
-            This action cannot be undone. This will permanently delete your account and all associated data.
-          </p>
-          <p className="text-sm text-gray-600 mb-4">
-            To confirm, type <strong>DELETE</strong> in the box below:
-          </p>
-          <input
-            type="text"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="Type DELETE to confirm"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-          />
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="deletePassword" className="block text-sm font-medium text-gray-700 mb-2">
-              Enter your password to confirm
-            </label>
-            <input
-              id="deletePassword"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || confirmText !== 'DELETE' || !password}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Deleting...' : 'Delete Account'}
             </button>
           </div>
         </form>

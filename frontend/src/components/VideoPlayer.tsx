@@ -8,10 +8,17 @@ import { analytics } from '@/lib/analytics';
 
 interface VideoPlayerProps {
   src: string;
-  videoId: string;
+  videoId?: string; // Optional - for video pages
+  lessonId?: string; // Optional - for lesson pages
+  title?: string; // Optional - for lesson pages
   autoplay?: boolean;
   onProgressUpdate?: (secondsWatched: number) => void;
   onVideoEnd?: () => void;
+  // Lesson-specific callbacks
+  onProgress?: (secondsWatched: number, duration: number) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onComplete?: () => void;
   initialTime?: number;
   onFocusStart?: () => void;
   onFocusEnd?: () => void;
@@ -21,9 +28,15 @@ interface VideoPlayerProps {
 export default function VideoPlayer({
   src,
   videoId,
+  lessonId,
+  title,
   autoplay = true,
   onProgressUpdate,
   onVideoEnd,
+  onProgress,
+  onPlay: onPlayCallback,
+  onPause: onPauseCallback,
+  onComplete: onCompleteCallback,
   initialTime = 0,
   onFocusStart,
   onFocusEnd,
@@ -50,39 +63,43 @@ export default function VideoPlayer({
 
   // Track VIDEO_OPENED when component mounts and video is ready
   useEffect(() => {
-    if (isReady && !hasOpenedRef.current) {
+    if (isReady && !hasOpenedRef.current && (videoId || lessonId)) {
       hasOpenedRef.current = true;
       const player = playerRef.current;
       if (player) {
         const duration = player.duration() || 0;
         setVideoDuration(duration);
-        analytics.track({
-          videoId,
+        const eventData: any = {
           eventType: 'VIDEO_OPENED',
           currentTime: 0,
           duration,
-        });
+        };
+        if (videoId) eventData.videoId = videoId;
+        if (lessonId) eventData.lessonId = lessonId;
+        analytics.track(eventData);
       }
     }
-  }, [isReady, videoId]);
+  }, [isReady, videoId, lessonId]);
 
   // Track VIDEO_EXITED when component unmounts
   useEffect(() => {
     return () => {
-      if (hasOpenedRef.current && !hasExitedRef.current) {
+      if (hasOpenedRef.current && !hasExitedRef.current && (videoId || lessonId)) {
         hasExitedRef.current = true;
         const player = playerRef.current;
         if (player) {
-          analytics.track({
-            videoId,
-            eventType: 'VIDEO_EXITED',
-            currentTime: Math.floor(player.currentTime() || 0),
-            duration: videoDuration,
-          });
+        const exitEventData: any = {
+          eventType: 'VIDEO_EXITED',
+          currentTime: Math.floor(player.currentTime() || 0),
+          duration: videoDuration,
+        };
+        if (videoId) exitEventData.videoId = videoId;
+        if (lessonId) exitEventData.lessonId = lessonId;
+        analytics.track(exitEventData);
         }
       }
     };
-  }, [videoId, videoDuration]);
+  }, [videoId, lessonId, videoDuration]);
 
   // Initialize player once - ensure element is in DOM
   useEffect(() => {
@@ -727,13 +744,19 @@ export default function VideoPlayer({
       }
       const currentTime = Math.floor(player.currentTime() || 0);
       const duration = Math.floor(player.duration() || videoDuration || 0);
-      analytics.track({
-        videoId,
+      const playEventData: any = {
         eventType: 'VIDEO_PLAY',
         currentTime,
         duration,
         playbackQuality: getCurrentQuality(),
-      });
+      };
+      if (videoId) playEventData.videoId = videoId;
+      if (lessonId) playEventData.lessonId = lessonId;
+      analytics.track(playEventData);
+      // Call lesson-specific callback if provided
+      if (onPlayCallback) {
+        onPlayCallback();
+      }
     };
 
     // Handle pause event
@@ -742,13 +765,19 @@ export default function VideoPlayer({
       if (hasPlayed) {
         const currentTime = Math.floor(player.currentTime() || 0);
         const duration = Math.floor(player.duration() || videoDuration || 0);
-        analytics.track({
-          videoId,
+        const pauseEventData: any = {
           eventType: 'VIDEO_PAUSE',
           currentTime,
           duration,
           playbackQuality: getCurrentQuality(),
-        });
+        };
+        if (videoId) pauseEventData.videoId = videoId;
+        if (lessonId) pauseEventData.lessonId = lessonId;
+        analytics.track(pauseEventData);
+        // Call lesson-specific callback if provided
+        if (onPauseCallback) {
+          onPauseCallback();
+        }
       }
     };
 
@@ -761,17 +790,24 @@ export default function VideoPlayer({
         onProgressUpdate(currentTime);
       }
 
+      // Call lesson-specific progress callback if provided
+      if (onProgress && duration > 0) {
+        onProgress(currentTime, duration);
+      }
+
       // Track PROGRESS event every 5-10 seconds
       if (hasPlayed && isPlaying) {
         const timeSinceLastProgress = currentTime - lastProgressSentRef.current;
         if (timeSinceLastProgress >= 5) {
-          analytics.track({
-            videoId,
+          const progressEventData: any = {
             eventType: 'VIDEO_PROGRESS',
             currentTime,
             duration,
             playbackQuality: getCurrentQuality(),
-          });
+          };
+          if (videoId) progressEventData.videoId = videoId;
+          if (lessonId) progressEventData.lessonId = lessonId;
+          analytics.track(progressEventData);
           lastProgressSentRef.current = currentTime;
         }
       }
@@ -787,13 +823,20 @@ export default function VideoPlayer({
     // Handle video end
     const handleEnded = () => {
       const duration = Math.floor(player.duration() || videoDuration || 0);
-      analytics.track({
-        videoId,
+      const completeEventData: any = {
         eventType: 'VIDEO_COMPLETE',
         currentTime: duration,
         duration,
         playbackQuality: getCurrentQuality(),
-      });
+      };
+      if (videoId) completeEventData.videoId = videoId;
+      if (lessonId) completeEventData.lessonId = lessonId;
+      analytics.track(completeEventData);
+      // Call lesson-specific completion callback if provided
+      if (onCompleteCallback) {
+        onCompleteCallback();
+      }
+      // Also call video end callback for backward compatibility
       if (onVideoEnd) {
         onVideoEnd();
       }
@@ -803,26 +846,30 @@ export default function VideoPlayer({
     const handleSeeking = () => {
       const currentTime = Math.floor(player.currentTime() || 0);
       const duration = Math.floor(player.duration() || videoDuration || 0);
-      analytics.track({
-        videoId,
+      const seekEventData: any = {
         eventType: 'VIDEO_SEEK',
         currentTime,
         duration,
         playbackQuality: getCurrentQuality(),
-      });
+      };
+      if (videoId) seekEventData.videoId = videoId;
+      if (lessonId) seekEventData.lessonId = lessonId;
+      analytics.track(seekEventData);
     };
 
     // Handle buffering
     const handleWaiting = () => {
       const currentTime = Math.floor(player.currentTime() || 0);
       const duration = Math.floor(player.duration() || videoDuration || 0);
-      analytics.track({
-        videoId,
+      const bufferEventData: any = {
         eventType: 'VIDEO_BUFFER',
         currentTime,
         duration,
         playbackQuality: getCurrentQuality(),
-      });
+      };
+      if (videoId) bufferEventData.videoId = videoId;
+      if (lessonId) bufferEventData.lessonId = lessonId;
+      analytics.track(bufferEventData);
     };
 
     // Track duration when metadata loads
@@ -918,7 +965,7 @@ export default function VideoPlayer({
       player.off('seeking', handleSeeking);
       player.off('waiting', handleWaiting);
     };
-  }, [isReady, initialTime, onProgressUpdate, onVideoEnd, hasPlayed, isPlaying, videoId, videoDuration]);
+  }, [isReady, initialTime, onProgressUpdate, onProgress, onVideoEnd, onPlayCallback, onPauseCallback, onCompleteCallback, hasPlayed, isPlaying, videoId, lessonId, videoDuration]);
 
   // Handle focus mode changes separately
   useEffect(() => {
@@ -931,24 +978,32 @@ export default function VideoPlayer({
     if (isFocusMode && !focusModeActive) {
       // Entering focus mode
       setFocusModeActive(true);
-      analytics.track({
-        videoId,
-        eventType: 'FOCUS_MODE_START',
-        currentTime: getCurrentTime(),
-        duration: getDuration(),
-      });
+      if (videoId || lessonId) {
+        const focusStartData: any = {
+          eventType: 'FOCUS_MODE_START',
+          currentTime: getCurrentTime(),
+          duration: getDuration(),
+        };
+        if (videoId) focusStartData.videoId = videoId;
+        if (lessonId) focusStartData.lessonId = lessonId;
+        analytics.track(focusStartData);
+      }
       if (onFocusStart) {
         onFocusStart();
       }
     } else if (!isFocusMode && focusModeActive) {
       // Exiting focus mode
       setFocusModeActive(false);
-      analytics.track({
-        videoId,
-        eventType: 'FOCUS_MODE_END',
-        currentTime: getCurrentTime(),
-        duration: getDuration(),
-      });
+      if (videoId || lessonId) {
+        const focusEndData: any = {
+          eventType: 'FOCUS_MODE_END',
+          currentTime: getCurrentTime(),
+          duration: getDuration(),
+        };
+        if (videoId) focusEndData.videoId = videoId;
+        if (lessonId) focusEndData.lessonId = lessonId;
+        analytics.track(focusEndData);
+      }
       if (onFocusEnd) {
         onFocusEnd();
       }
